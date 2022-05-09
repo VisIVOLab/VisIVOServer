@@ -19,8 +19,8 @@
 
 std::vector<std::string> VFextFile;
 std::vector<std::string> VIextFile;
-extern "C"
-{
+
+// extern "C"{
   
 int VI_Import(VisIVOImporter *env);
 int VF_Filter(VisIVOFilter *env);
@@ -911,4 +911,4 @@ void VA_SetMultiProc(VisIVOAsynchId *id)
 }
 
 //
-} //extern "C"
+// } //extern "C"

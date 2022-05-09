@@ -35,8 +35,8 @@
 #else
 	#include <unistd.h>
 #endif
-extern "C"
-{
+
+// extern "C"{
 
 // Dichiarazione delle funzioni principali.
 int VI_Import(VisIVOImporter *env);
@@ -336,4 +336,4 @@ for(int idPar=0; idPar<NPAR; idPar++)
   return 0;
 }
 
-} //extern "C"
+// } //extern "C"
