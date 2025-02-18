@@ -132,6 +132,12 @@ void AbstractSource::setPointsFileName(const char *fileName,const char *binaryNa
 }
 
 //---------------------------------------------------------------------
+void AbstractSource::setEndianism(const std::string& s) {  
+//---------------------------------------------------------------------
+  m_endian = s;  
+}
+
+//---------------------------------------------------------------------
 int AbstractSource::readHeader()
 //---------------------------------------------------------------------
 {

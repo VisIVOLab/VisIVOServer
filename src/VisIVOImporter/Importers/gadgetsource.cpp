@@ -36,6 +36,10 @@
 #include <omp.h>
 #include <unistd.h>
 
+#ifndef off64_t
+#define off64_t off_t
+#endif
+
 bool isNumeric(std::string const &str)
 {
   auto it = str.begin();
@@ -87,7 +91,7 @@ int GadgetSource::readHeader()
     headerType2 curHead;
     inFile.seekg(4, std::ios::beg);
     
-    inFile.read((char *)(&curHead), 304);   //!*** COPY DATA in STRUCT m_pHeaderType2 ***//
+    inFile.read((char *)(&curHead), 256);   //!*** COPY DATA in STRUCT m_pHeaderType2 ***//
     m_snapformat = 2;
     if (needSwap)
       swapHeaderType2();
@@ -138,6 +142,7 @@ int GadgetSource::readHeader()
     {
       std::cerr<<"The size File is not than expected"<<std::endl;
       return -1;
+      
     }
       
   }
@@ -147,6 +152,7 @@ int GadgetSource::readHeader()
 
 int GadgetSource::readMultipleHeaders(int nFiles, std::string fileName, bool needSwap)
 {
+  long long int sum = 0; 
   for(int i = 0; i < nFiles; i++){ 
     std::ifstream inFile; 
     headerType2 curHead;
@@ -154,11 +160,11 @@ int GadgetSource::readMultipleHeaders(int nFiles, std::string fileName, bool nee
     
     inFile.seekg(4, std::ios::beg);
     
-    inFile.read((char *)(&curHead), 304);   //!*** COPY DATA in STRUCT m_pHeaderType2 ***//
+    inFile.read((char *)(&curHead), 256);   //!*** COPY DATA in STRUCT m_pHeaderType2 ***//
     if (needSwap)
       swapHeaderType2();
     m_pHeaderType2.push_back(curHead);
-
+    sum += curHead.npart[1];
     inFile.close();
   }
   return 1;
@@ -181,203 +187,73 @@ int GadgetSource::checkMultipleFiles(int nFiles, std::string fName){
   return 1; 
 }
 
+bool GadgetSource::determineEndianism() {
+    std::string systemEndianism;
+#ifdef VSBIGENDIAN
+    systemEndianism = "big";
+#else
+    systemEndianism = "little";
+#endif
+    return ((m_endian == "b" || m_endian == "big") && systemEndianism == "little") ||
+           ((m_endian == "l" || m_endian == "little") && systemEndianism == "big");
+}
+
 int GadgetSource::readData()
 {
+  
   char dummy[4]; 
   int inFile[numFiles];
   std::string systemEndianism;
-  bool needSwap=false;
-#ifdef VSBIGENDIAN
-  systemEndianism="big";
-#else
-  systemEndianism="little";
-#endif
-  if((m_endian=="b" || m_endian=="big") && systemEndianism=="little")
-    needSwap=true;
-  if((m_endian=="l" || m_endian=="little") && systemEndianism=="big")
-    needSwap=true;
+  bool needSwap = determineEndianism();
 
   int type=0;
   unsigned int i=0;
   unsigned int j=0;
-
-  char tagTmp[5]="";
-  std::string tag; 
-//   const char point = '.';
-  int idx = m_pointsBinaryName.rfind('.');
-
-  std::string pathFileIn = m_pointsBinaryName.erase(idx, idx+4);
-  std::string pathFileOut = pathFileIn;
-   
-  std::string bin = ".bin";
-  std::string X = "_X"; std::string Y = "_Y"; std::string Z = "_Z";
-
-  /*=======================================================================*/
-  /*!================== Identification TYPE & NAME BLOCK ===================*/
-
-  std::vector<std::string> tagTypeForNameFile; //!species block nameset 
-  tagTypeForNameFile.push_back("GAS");
-  tagTypeForNameFile.push_back("HALO");
-  tagTypeForNameFile.push_back("DISK");
-  tagTypeForNameFile.push_back("BULGE");
-  tagTypeForNameFile.push_back("STARS");
-  tagTypeForNameFile.push_back("BNDRY");
-
-  std::vector<std::string> blockNamesToCompare; //!block fields names
-  blockNamesToCompare.push_back("POS"); //0
-  blockNamesToCompare.push_back("VEL"); //1
-  blockNamesToCompare.push_back("ID");  //2
-  blockNamesToCompare.push_back("MASS");//3
-  blockNamesToCompare.push_back("U");   //4
-  blockNamesToCompare.push_back("TEMP");//5
-  blockNamesToCompare.push_back("RHO"); //6
-  blockNamesToCompare.push_back("NE");  //7
-  blockNamesToCompare.push_back("NH");  //8
-  blockNamesToCompare.push_back("HSML");//9
-  blockNamesToCompare.push_back("SFR"); //10
-  blockNamesToCompare.push_back("AGE"); //11
-  blockNamesToCompare.push_back("Z");   //12
-  blockNamesToCompare.push_back("Zs");  //13
-  blockNamesToCompare.push_back("iM");  //14
-  blockNamesToCompare.push_back("ZAGE");//15
-  blockNamesToCompare.push_back("ZALV");//16
-  blockNamesToCompare.push_back("CLDX");//17
-  blockNamesToCompare.push_back("TSTP");//18
-  blockNamesToCompare.push_back("POT"); //19
-  blockNamesToCompare.push_back("ACCE");//20
-  blockNamesToCompare.push_back("ENDT");//21
-  //blockNamesToCompare.push_back("TSTP");//10
-  blockNamesToCompare.push_back("IDU"); //22
-  blockNamesToCompare.push_back("HOTT");//23
-  blockNamesToCompare.push_back("MHOT");//24
-  blockNamesToCompare.push_back("MCLD");//25
-  blockNamesToCompare.push_back("EHOT");//26
-  blockNamesToCompare.push_back("MSF"); //27
-  blockNamesToCompare.push_back("MFST");//28
-  blockNamesToCompare.push_back("NMF"); //29
-  blockNamesToCompare.push_back("EOUT");//30
-  blockNamesToCompare.push_back("EREC");//31
-  blockNamesToCompare.push_back("EOLD");//32
-  blockNamesToCompare.push_back("TDYN");//33
-  blockNamesToCompare.push_back("SFRo");//34
-  blockNamesToCompare.push_back("CLCK");//35
-  blockNamesToCompare.push_back("Egy0");//36
-  blockNamesToCompare.push_back("GRAD");//37
-  blockNamesToCompare.push_back("BHMA");//38
-  blockNamesToCompare.push_back("BHMD");//39
-  blockNamesToCompare.push_back("BHPC");//40
-  blockNamesToCompare.push_back("ACRB");//41
-  
-  std::vector<std::vector<bool>> blocksFields = 
-  { 
-    {1,1,1,1,1,1}, // 0: POS, VEL, ID, MASS, IDU, TSTP, POT, ACCE
-    {1,0,0,0,0,0}, // 1: U, TEMP, RHO, NE, NH, HSML, SFR, CLDX, ENDT, HOTT, MHOT, MCLD, EHOT, MSF, MFST, NMF, EOUT, EREC, EOLD, TDYN, SFRo, CLCK, Egy0, GRAD
-    {0,0,0,0,1,1}, // 2: AGE
-    {1,0,0,0,1,0}, // 3: Z, Zs, ZAGE, ZALV
-    {0,0,0,0,1,0}, // 4: iM
-    {0,0,0,0,0,1}  // 5: BHMA, BHMD, BHPC, ACRB
-  };
-
-  std::vector<int> blockNamesToFields 
-  {
-    0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 3, 3, 4, 3, 3, 1, 0, 0, 0,
-    1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 5, 5, 5
-  };
-
-  std::vector<int> blockSize 
-  {
-    3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1
-  };
-
-  std::unordered_map<std::string,int>mapBlockNamesToFields;
-  std::unordered_map<std::string,int>mapBlockSize;
-
-  for (i = 0; i < blockNamesToCompare.size(); ++i){
-    mapBlockNamesToFields[blockNamesToCompare[i]] = blockNamesToFields[i];
-  }
-
-  for (i = 0; i < blockNamesToCompare.size(); ++i){
-    mapBlockSize[blockNamesToCompare[i]] = blockSize[i];
-  }
-
-  std::vector<std::vector<std::string> > namesFields;
-  std::vector<std::string> tmpNamesFields;
-  std::string pathHeader = "";  int KK=0;
-  
-  /*!=======================================================================*/	/*!========================== Open and Check FILE ========================*/
-  std::string fileName;
-  std::filesystem::path p(m_pointsFileName.c_str());
-  fileName = m_pointsFileName.c_str();
-  
-  if(numFiles > 1 && p.extension().generic_string().size() > 0 && isNumeric(p.extension().generic_string().substr(1)) ){
-    for(int i = 0; i < p.extension().generic_string().substr(1).size(); i++){
-      fileName.pop_back();
-    }
-  }
-
-  //create list of blocks to read
-  std::ifstream fStream;
-  fStream.open(fileName + std::to_string(0));
-  fStream.seekg(280, std::ios::beg);
-    
-  std::vector<std::string> listOfBlocks;
-  while(fStream.peek() != EOF){
-    fStream.seekg(4, std::ios::cur);
-    fStream.read((char *)(tagTmp), 4*sizeof(char));   
-    tag = strtok(tagTmp, " ");
-    if(std::find(blockNamesToCompare.begin(), blockNamesToCompare.end(), tag) != blockNamesToCompare.end() && iCompare(tag, "Zs") != 0){
-      if(m_fields.size() == 0 || std::find(m_fields.begin(), m_fields.end(), tag) != m_fields.end())
-        listOfBlocks.push_back(tag);
-    }
-    fStream.read((char *)(m_sizeBlock), sizeof(int));  
-    if (needSwap)
-      m_sizeBlock[0]=intSwap((char *)(&m_sizeBlock[0]));
-    fStream.seekg (m_sizeBlock[0], std::ios::cur);
-    fStream.read((char *)(m_sizeBlock), sizeof(int));
-  }
-  fStream.close();
 
   // Get the number of processes
   int num_proc, proc_id;
   MPI_Comm_size(MPI_COMM_WORLD, &num_proc);
   MPI_Comm_rank (MPI_COMM_WORLD, &proc_id);
 
+  char tagTmp[5]="";
+  std::string tag; 
+//   const char point = '.';
+  int idx = m_pointsBinaryName.rfind('.');
+  std::string pathFileOut = m_pointsBinaryName.erase(idx, idx+4); 
+   
+  std::string bin = ".bin";
+  std::string X = "_X"; std::string Y = "_Y"; std::string Z = "_Z";
+
+  std::vector<std::string> tagTypeForNameFile = {"GAS", "HALO", "DISK", "BULGE", "STARS", "BNDRY"};
+
+  unsigned long long npartTotal64[6];
+  initializeParticleCounts(npartTotal64);
+
+  std::unordered_map<std::string,int>mapBlockNamesToFields;
+  std::unordered_map<std::string,int>mapBlockSize;
+
+  generateMap(mapBlockNamesToFields, blockNamesToCompare, blockNamesToFields);
+  generateMap(mapBlockSize, blockNamesToCompare, blockSize);
+
+  std::vector<std::vector<std::string> > namesFields;
+  std::vector<std::string> tmpNamesFields;
+  std::string pathHeader = "";  int KK=0;
+  
+  std::string fileName = processFileName(m_pointsFileName);
+  //create list of blocks to read
+  std::vector<std::string> listOfBlocks = extractBlockList(fileName, needSwap);
 
   std::vector<std::string> blockNames;
 
-      int typePosition[listOfBlocks.size() + 1][6];
-  long long fileStartPosition[6][numFiles + 1];
+  // Declare typePosition and fileStartPosition using vectors
+  std::vector<std::vector<int>> typePosition;
+  std::vector<std::vector<long long>> fileStartPosition;
 
-  for(int j = 0; j < 6; j++){
-    typePosition[0][j] = 0;
-    for(int i = 0; i < listOfBlocks.size(); i++){
-      if(iCompare(listOfBlocks[i], "MASS") != 0 || (iCompare(listOfBlocks[i], "MASS") == 0 && m_pHeaderType2[0].mass[j] == 0)) typePosition[i + 1][j]= 
-        blocksFields[mapBlockNamesToFields[listOfBlocks[i]]][j] * 
-        mapBlockSize[listOfBlocks[i]];
-      else
-        typePosition[i + 1][j] = 0;
-        
-    }
-  }
+  // Compute type positions
+  computeTypePositions(listOfBlocks, mapBlockNamesToFields, mapBlockSize, typePosition);
 
-  //Prefix sum
-  for(int j = 0; j < 6; j++){
-    for(int i = 1; i < listOfBlocks.size(); i++){
-      typePosition[i][j] += typePosition[i-1][j];
-    }
-  }
-
-  //initialize pos 0 for each type
-  for(int type = 0; type < 6; type++){
-      fileStartPosition[type][0] = 0;
-  }
-
-  for(int file = 1; file < numFiles; file++){
-    for(int type = 0; type < 6; type++){
-      fileStartPosition[type][file] = fileStartPosition[type][file-1] + (unsigned long long)m_pHeaderType2[file-1].npart[type];
-    }
-  }
+  // Compute file start positions
+  computeFileStartPositions(numFiles, m_pHeaderType2, fileStartPosition);
   
   int nTotalBlocks = listOfBlocks.size() * numFiles;
   double t1, t2; 
@@ -385,234 +261,404 @@ int GadgetSource::readData()
   bool alreadyOpen = false;
   int totBlocks = listOfBlocks.size();
 
-  int outFileBin[6];
-  for (type=0; type<6; type++)
-  {
-    if (m_pHeaderType2[0].npart[type] != 0)	
-    {	
-      std::string nameFileBinOut =  pathFileOut + tagTypeForNameFile[type].c_str() + bin;
-      outFileBin[type] = creat(nameFileBinOut.c_str(), S_IRWXU);
-    }
-  }	
+  openInputFiles(fileName, numFiles, inFile);
 
-  for(int i = 0; i < numFiles; i++){
-    if(numFiles > 1) inFile[i] = open((fileName + std::to_string(i)).c_str(), std::ios::binary);
-    else inFile[i] = open(fileName.c_str(), std::ios::binary);
-  }
+  int outFileBin[6]; 
+  openOutputFiles(pathFileOut, tagTypeForNameFile, bin, npartTotal64, outFileBin);
 
-  unsigned int param=1; unsigned int esp=32;
-  unsigned long long int maxULI;
-  #pragma omp parallel for collapse(2)
-  for(int nBlock = proc_id; nBlock < totBlocks; nBlock+=num_proc){
-    for(int nFile = 0; nFile < numFiles; nFile++){
-      std::string tag;   
-      char tagTmp[5]="";
-      long long unsigned int offset = 0;
-      int sizeBlock[1];
-      sizeBlock[0] = 0;
-      unsigned long int chunk=0; unsigned long int n=0; unsigned long int Resto=0;
-      int c=0;
-      while(iCompare(tag, listOfBlocks[nBlock]) != 0){
-        offset += 4;
-        pread(inFile[nFile], (char *)(tagTmp), 4*sizeof(char), offset);
-        offset += 4;
-        tag = strtok(tagTmp, " ");
-        if(iCompare(tag, listOfBlocks[nBlock]) == 0) break;
-        pread(inFile[nFile], (char *)(sizeBlock), sizeof(int), offset);
-        offset += (4 + sizeBlock[0] + 4);
-        if (needSwap)
-          m_sizeBlock[0]=intSwap((char *)(&m_sizeBlock[0])); 
-      }
-      offset += 12;
-      off64_t pWrite=0; long long unsigned int pToStart=0;
-      off64_t pWriteX=0,  pWriteY=0, pWriteZ=0;
-      //start processing block
-      unsigned long long int minPart[6];
-            
-      maxULI=ldexp((float)param, esp); 
-      minPart[0]=maxULI;
-      minPart[1]=maxULI;
-      minPart[2]=maxULI;
-      minPart[3]=maxULI;
-      minPart[4]=maxULI;
-      minPart[5]=maxULI;
-      for(int type=0; type < 6; type++){
-        if (m_pHeaderType2[nFile].npart[type] != 0 && m_pHeaderType2[nFile].npart[type] <= 2500000)
-          minPart[type] = m_pHeaderType2[nFile].npart[type];
-        else
-          minPart[type] = 2500000;
-      }
-      
-      for(int type = 0; type < 6; type++)
-      {             
-        if(m_pHeaderType2[nFile].npart[type] != 0 && blocksFields[mapBlockNamesToFields[listOfBlocks[nBlock]]][type] && 
-          (iCompare(listOfBlocks[nBlock], "MASS") != 0 || m_pHeaderType2[nFile].mass[type] == 0))
-        {    
-          pToStart = typePosition[nBlock][type]*(unsigned long long)m_pHeaderType2[nFile].npartTotal[type] + fileStartPosition[type][nFile];
-          chunk = minPart[type];
-          n=m_pHeaderType2[nFile].npart[type]/chunk;
-          
-          Resto=m_pHeaderType2[nFile].npart[type]-(chunk*n); 
-              
-          float *bufferBlock=NULL;
-          bufferBlock = new float[mapBlockSize[listOfBlocks[nBlock]]*chunk];
+  processBlocksParallel(proc_id, num_proc, totBlocks, numFiles, 
+                 inFile, outFileBin, listOfBlocks, 
+                 mapBlockNamesToFields, mapBlockSize, 
+                 npartTotal64, typePosition, fileStartPosition, 
+                 needSwap);
 
-          if(mapBlockSize[listOfBlocks[nBlock]] == 3)
-          {           
-            float *buffer_X=NULL;
-            buffer_X = new float[chunk];
-            float *buffer_Y=NULL;
-            buffer_Y = new float[chunk];
-            float *buffer_Z=NULL;
-            buffer_Z = new float[chunk];
-                
-            for (int k = 0; k < n; k++)
-            {    
-              pread(inFile[nFile], (char *)(bufferBlock), 3*chunk*sizeof(float), offset);
-              offset += 3*chunk*sizeof(float);
-              if(needSwap)
-                for (i=0; i<chunk; i++)
-                {	
-                  buffer_X[i] = floatSwap((char *)(&bufferBlock[3*i]));
-                  buffer_Y[i] = floatSwap((char *)(&bufferBlock[3*i+1]));
-                  buffer_Z[i] = floatSwap((char *)(&bufferBlock[3*i+2]));
-                }
-              else
-                for (i=0; i<chunk; i++)
-                {	
-                  buffer_X[i] = bufferBlock[3*i];
-                  buffer_Y[i] = bufferBlock[3*i+1];
-                  buffer_Z[i] = bufferBlock[3*i+2];
-                }
-              
-              pWriteX=(((unsigned long long)pToStart*sizeof(float)) + (k*chunk*sizeof(float)));
-              pwrite(outFileBin[type], (char *)(buffer_X), chunk*sizeof(float), pWriteX);
-              pWriteY=((pToStart*sizeof(float)) + (k*chunk*sizeof(float)) + ((unsigned long long)m_pHeaderType2[0].npartTotal[type]*sizeof(float)));
-              pwrite(outFileBin[type], (char *)(buffer_Y), chunk*sizeof(float), pWriteY);
-              pWriteZ=((pToStart*sizeof(float)) + (k*chunk*sizeof(float)) + (2*(unsigned long long)m_pHeaderType2[0].npartTotal[type]*sizeof(float)));  
-              pwrite(outFileBin[type], (char *)(buffer_Z), chunk*sizeof(float), pWriteZ);
-            }
-            /*=================================================================*/
-            /*============ Buffer Block and Write out FILE [Resto] ============*/
-    
-            if(Resto>0){
-              pread(inFile[nFile], (char *) bufferBlock, 3*Resto*sizeof(float), offset);
-              offset += 3*Resto*sizeof(float);
-              if(needSwap)
-                for (i=0; i<Resto; i++)
-                {	
-                  buffer_X[i] = floatSwap((char *)(&bufferBlock[3*i]));
-                  buffer_Y[i] = floatSwap((char *)(&bufferBlock[3*i+1]));
-                  buffer_Z[i] = floatSwap((char *)(&bufferBlock[3*i+2]));
-                }
-              else
-                for (i=0; i<Resto; i++)
-                {	
-                  buffer_X[i] = bufferBlock[3*i];
-                  buffer_Y[i] = bufferBlock[3*i+1];
-                  buffer_Z[i] = bufferBlock[3*i+2];
-                }
 
-              pWriteX=((pToStart*sizeof(float)) + (n*chunk*sizeof(float)));
-              pwrite(outFileBin[type], (char *)(buffer_X), Resto*sizeof(float), pWriteX);
-              pWriteY=((pToStart*sizeof(float)) + (n*chunk*sizeof(float)) + (m_pHeaderType2[0].npartTotal[type]*sizeof(float)));
-              pwrite(outFileBin[type], (char *)(buffer_Y), Resto*sizeof(float), pWriteY);
-              pWriteZ=((pToStart*sizeof(float)) + (n*chunk*sizeof(float)) + (2*m_pHeaderType2[0].npartTotal[type]*sizeof(float)));
-              pwrite(outFileBin[type], (char *)(buffer_Z), Resto*sizeof(float), pWriteZ);
-            }
-                    /*=================================================================*/  
-
-            delete [] buffer_X;
-            delete [] buffer_Y;
-            delete [] buffer_Z;
-            delete [] bufferBlock;
-          }
-          else
-          {
-            for (int k = 0; k < n; k++)
-            {
-              pread(inFile[nFile], (char *)(bufferBlock), chunk*sizeof(float), offset);
-              offset += chunk*sizeof(float);
-              if(needSwap)
-                for (j=0; j<chunk; j++)
-                  bufferBlock[j]=floatSwap((char *)(&bufferBlock[j]));
-              
-              pWrite=((pToStart*sizeof(float)) + (k*chunk*sizeof(float))); 
-              pwrite(outFileBin[type], (char *)(bufferBlock), chunk*sizeof(float), pWrite);         
-            }
-
-            /*=================================================================*/
-            /*============ Buffer Block and Write out FILE [Resto] ============*/
-
-            if(Resto > 0){  
-              pread(inFile[nFile], (char *) bufferBlock, Resto*sizeof(float), offset);
-              offset += Resto*sizeof(float);
-              if( needSwap)
-                for (j=0; j<Resto; j++)
-                  bufferBlock[j]=floatSwap((char *)(&bufferBlock[j]));
-            
-              pWrite=((pToStart*sizeof(float)) + (n*chunk*sizeof(float)));
-              pwrite(outFileBin[type], (char *)(bufferBlock), Resto*sizeof(float), pWrite);
-            }
-            delete [] bufferBlock;
-          }/*d*/
-        }
-        pWriteX = 0; pWriteY = 0; pWriteZ = 0; 
-      } 
-    }
-  }
-
-  for(int nFile = 0; nFile < 6; nFile++)close(inFile[nFile]);
+  for(int nFile = 0; nFile < numFiles; nFile++)close(inFile[nFile]);
   for(type = 0; type < 6; type++)close(outFileBin[type]);
    
-  /*=================================================================*/
-  /*!=========== Read information to write FILE.bin.head =============*/
-  if(proc_id==0){
-  for(type = 0; type < 6; type++){      
-    if (m_pHeaderType2[0].npart[type] == 0){       
-      tmpNamesFields.clear();
-      tmpNamesFields.push_back(" ");
-      namesFields.push_back(tmpNamesFields);
-      tmpNamesFields.clear();
-    }
-    else if (m_pHeaderType2[0].npart[type] != 0)
-    {
-      for(int i = 0; i < listOfBlocks.size(); i++)
-      {
-        if(mapBlockSize[listOfBlocks[i]] == 3 && blocksFields[mapBlockNamesToFields[listOfBlocks[i]]][type]){
-          tmpNamesFields.push_back(listOfBlocks[i] + X);
-          tmpNamesFields.push_back(listOfBlocks[i] + Y);
-          tmpNamesFields.push_back(listOfBlocks[i] + Z);
-        }
-        else if(mapBlockSize[listOfBlocks[i]] == 1 && blocksFields[mapBlockNamesToFields[listOfBlocks[i]]][type] && (iCompare(listOfBlocks[i], "MASS") != 0|| m_pHeaderType2[0].mass[type] == 0))
-          tmpNamesFields.push_back(listOfBlocks[i]);
-      }  
-      namesFields.push_back(tmpNamesFields);
-      tmpNamesFields.clear();
-    }
+  //WRITE HEADER FILES
+  if (proc_id == 0) {
+    std::vector<std::vector<std::string>> namesFields;
+    extractHeaderFields(listOfBlocks, mapBlockSize, mapBlockNamesToFields, namesFields);
+    writeHeaderFiles(pathFileOut, namesFields, tagTypeForNameFile, npartTotal64);
   }  
-  /*=================================================================*/		
-  /*!===================== Write FILE.bin.head =======================*/
-
-  for (type=0; type<6; type++)
-  {
-    if(m_pHeaderType2[0].npartTotal[type] != 0)
-    {
-      for(int KK = 0; KK < namesFields[type].size(); KK++)
-      {
-        m_fieldsNames.push_back(namesFields[type][KK]);
-      }
-      pathHeader = pathFileOut + tagTypeForNameFile[type] + bin;
-      makeHeader((unsigned long long int)m_pHeaderType2[0].npartTotal[type], pathHeader, m_fieldsNames,m_cellSize,m_cellComp,m_volumeOrTable);
-      m_fieldsNames.clear();
-      pathHeader="";
-    }
-  }  
-  }
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
   return 0;
 }
+
+void GadgetSource::processBlocksParallel(int proc_id, int num_proc, int totBlocks, int numFiles,
+                                    int* inFile, int* outFileBin, 
+                                    const std::vector<std::string>& listOfBlocks,
+                                    const std::unordered_map<std::string, int>& mapBlockNamesToFields,
+                                    const std::unordered_map<std::string, int>& mapBlockSize,
+                                    const unsigned long long* npartTotal64,
+                                    const std::vector<std::vector<int>>& typePosition,
+                                    const std::vector<std::vector<long long>>& fileStartPosition,
+                                    bool needSwap) {
+    #pragma omp parallel for collapse(2)
+    for (int nBlock = 0; nBlock < totBlocks; nBlock++) {
+        for (int nFile = proc_id; nFile < numFiles; nFile += num_proc) {
+          
+            long long unsigned int offset = findBlockOffset(inFile[nFile], listOfBlocks[nBlock], needSwap);
+            long long unsigned int pToStart = 0;
+            unsigned long long chunk = 0, n = 0, Resto = 0;
+            unsigned long long minPart[6];
+            computeChunkSize(nFile, chunk, n, Resto, minPart);
+
+
+            for (int type = 0; type < 6; type++) {
+              processParticle(type, nBlock, nFile, listOfBlocks, 
+                    mapBlockNamesToFields, mapBlockSize, 
+                    typePosition, fileStartPosition, 
+                    npartTotal64, minPart, needSwap,
+                    inFile, outFileBin, offset);
+            }
+        }
+    }
+}
+
+void GadgetSource::processParticle(int type, int nBlock, int nFile, 
+                     const std::vector<std::string>& listOfBlocks,
+                     const std::unordered_map<std::string, int>& mapBlockNamesToFields,
+                     const std::unordered_map<std::string, int>& mapBlockSize,
+                     const std::vector<std::vector<int>>& typePosition, 
+                     const std::vector<std::vector<long long>>& fileStartPosition, 
+                     const unsigned long long* npartTotal64, 
+                     unsigned long long* minPart, bool needSwap,
+                     int* inFile, int* outFileBin, long long unsigned int offset) {
+
+    // Skip invalid particle types
+    if (!isValidParticleType(type, nFile, nBlock, listOfBlocks, mapBlockNamesToFields))return;
+
+    unsigned long long chunk = minPart[type];
+    unsigned long long n = m_pHeaderType2[nFile].npart[type] / chunk;
+    unsigned long long Resto = m_pHeaderType2[nFile].npart[type] - (chunk * n);
+    unsigned long long pToStart = typePosition[nBlock][type] * npartTotal64[type] + fileStartPosition[type][nFile];
+
+    int blockSize = mapBlockSize.at(listOfBlocks[nBlock]);
+    float* bufferBlock = new float[blockSize * chunk];
+
+    std::vector<float*> buffers;
+    allocateBuffers(blockSize, chunk, buffers);
+
+    // Process chunks
+    for (int k = 0; k < n; k++) {
+      processChunk(inFile[nFile], bufferBlock, buffers, blockSize, chunk, offset, needSwap);
+      writeChunkData(outFileBin[type], buffers, chunk, pToStart, k, npartTotal64, blockSize, type);
+    }
+
+    // Handle Resto
+    if (Resto > 0) {
+      processChunk(inFile[nFile], bufferBlock, buffers, blockSize, Resto, offset, needSwap);
+      writeChunkData(outFileBin[type], buffers, Resto, pToStart, n, npartTotal64, blockSize, type);
+    }
+
+    delete[] bufferBlock;
+    for (int dim = 0; dim < blockSize; ++dim) {
+        delete[] buffers[dim];
+    }
+}
+
+void GadgetSource::allocateBuffers(int blockSize, unsigned long long chunk, std::vector<float*>& buffers) {
+    buffers.resize(blockSize, nullptr);
+    for (int dim = 0; dim < blockSize; ++dim) {
+        buffers[dim] = new float[chunk];
+    }
+}
+
+void GadgetSource::processChunk(int fileDescriptor, float* bufferBlock, std::vector<float*>& buffers, 
+                  int blockSize, unsigned long long chunk, long long unsigned int& offset, 
+                  bool needSwap) {
+    // Read raw data
+    pread(fileDescriptor, (char*)(bufferBlock), blockSize * chunk * sizeof(float), offset);
+    offset += blockSize * chunk * sizeof(float);
+
+    // Process the data
+    for (unsigned long long i = 0; i < chunk; i++) {
+        for (int dim = 0; dim < blockSize; ++dim) {
+            buffers[dim][i] = needSwap ? floatSwap((char*)(&bufferBlock[blockSize * i + dim]))
+                                       : bufferBlock[blockSize * i + dim];
+        }
+    }
+}
+
+void GadgetSource::writeChunkData(int outputFile, const std::vector<float*>& buffers, 
+                    unsigned long long chunk, unsigned long long pToStart, 
+                    unsigned long long chunkIndex, const unsigned long long* npartTotal64, 
+                    int blockSize, int type) {
+    for (int dim = 0; dim < blockSize; ++dim) {
+        unsigned long long pWrite = (pToStart * sizeof(float)) + 
+                                    (chunkIndex * chunk * sizeof(float)) + 
+                                    (dim * npartTotal64[type] * sizeof(float));
+        pwrite(outputFile, (char*)(buffers[dim]), chunk * sizeof(float), pWrite);
+    }
+}
+
+bool GadgetSource::isValidParticleType(int type, int nFile, int nBlock,
+                         const std::vector<std::string>& listOfBlocks,
+                         const std::unordered_map<std::string, int>& mapBlockNamesToFields) {
+    // Check if the particle type has no particles
+    if (m_pHeaderType2[nFile].npart[type] == 0) return false;
+
+    // Check if the block field is valid for this type
+    if (!blocksFields[mapBlockNamesToFields.at(listOfBlocks[nBlock])][type]) return false;
+
+    // "MASS" block should only be processed if mass[type] != 0
+    if (iCompare(listOfBlocks[nBlock], "MASS") == 0 && m_pHeaderType2[nFile].mass[type] != 0)
+        return false;
+
+    return true;
+}
+
+void GadgetSource::computeChunkSize(int fileIndex, unsigned long long& chunk, 
+                                    unsigned long long& n, unsigned long long& Resto, 
+                                    unsigned long long minPart[6]) {
+    unsigned int param = 1, esp = 32;
+    unsigned long long maxULI = ldexp((float)param, esp);
+    std::fill_n(minPart, 6, maxULI);
+    for (int type = 0; type < 6; type++) {
+        if (m_pHeaderType2[fileIndex].npart[type] != 0 && m_pHeaderType2[fileIndex].npart[type] <= 2500000)
+            minPart[type] = m_pHeaderType2[fileIndex].npart[type];
+        else
+            minPart[type] = 2500000;
+    }
+
+    chunk = minPart[0];  // Assuming chunk is related to the first type; adapt as needed
+    n = m_pHeaderType2[fileIndex].npart[0] / chunk;
+    Resto = m_pHeaderType2[fileIndex].npart[0] - (chunk * n);
+}
+
+
+long long GadgetSource::findBlockOffset(int fileDescriptor, const std::string& targetBlock, bool needSwap) {
+    std::string tag;
+    char tagTmp[5] = "";
+    long long unsigned int offset = 0;
+    int sizeBlock[1] = {0};
+
+    while (iCompare(tag, targetBlock) != 0) {
+        offset += 4;
+        pread(fileDescriptor, (char *)(tagTmp), 4 * sizeof(char), offset);
+        offset += 4;
+        tag = strtok(tagTmp, " ");
+        if (iCompare(tag, targetBlock) == 0) break;
+        
+        pread(fileDescriptor, (char *)(sizeBlock), sizeof(int), offset);
+        offset += (4 + sizeBlock[0] + 4);
+        
+        if (needSwap) sizeBlock[0] = intSwap((char *)(&sizeBlock[0]));
+    }
+
+    return offset + 12;
+}
+
+
+std::string GadgetSource::processFileName(std::string s) {
+    std::filesystem::path p(s);
+    std::string fileName = s;
+
+    if (numFiles > 1 && p.has_extension()) {
+        std::string ext = p.extension().string();
+        
+        if (!ext.empty() && ext[0] == '.' && isNumeric(ext.substr(1))) {  
+            fileName.erase(fileName.size() - ext.size() + 1);  // Remove only numeric part of the extension
+        }
+    }
+    return fileName;
+}
+
+void GadgetSource::extractHeaderFields(const std::vector<std::string>& listOfBlocks, 
+                                       const std::unordered_map<std::string, int>& mapBlockSize,
+                                       const std::unordered_map<std::string, int>& mapBlockNamesToFields,
+                                       std::vector<std::vector<std::string>>& namesFields) {
+    std::vector<std::string> tmpNamesFields;
+
+    for (int type = 0; type < 6; type++) {
+        if (m_pHeaderType2[0].npart[type] == 0) {  
+            tmpNamesFields.clear();
+            tmpNamesFields.push_back(" ");
+            namesFields.push_back(tmpNamesFields);
+            tmpNamesFields.clear();
+        } else {
+            for (const auto& block : listOfBlocks) {
+                if (mapBlockSize.at(block) == 3 && blocksFields[mapBlockNamesToFields.at(block)][type]) {
+                    tmpNamesFields.push_back(block + "_X");
+                    tmpNamesFields.push_back(block + "_Y");
+                    tmpNamesFields.push_back(block + "_Z");
+                } else if (mapBlockSize.at(block) > 1 && blocksFields[mapBlockNamesToFields.at(block)][type]) {
+                    for (int j = 0; j < mapBlockSize.at(block); j++) {
+                        tmpNamesFields.push_back(block + "_" + std::to_string(j));
+                    }
+                } else if (mapBlockSize.at(block) == 1 && blocksFields[mapBlockNamesToFields.at(block)][type] &&
+                           (iCompare(block, "MASS") != 0 || m_pHeaderType2[0].mass[type] == 0)) {
+                    tmpNamesFields.push_back(block);
+                }
+            }
+            namesFields.push_back(tmpNamesFields);
+            tmpNamesFields.clear();
+        }
+    }
+}
+
+void GadgetSource::writeHeaderFiles(const std::string& pathFileOut, 
+                                    const std::vector<std::vector<std::string>>& namesFields, 
+                                    const std::vector<std::string>& tagTypeForNameFile, 
+                                    const unsigned long long* npartTotal64) {
+    std::string pathHeader;
+    for (int type = 0; type < 6; type++) {
+        if (npartTotal64[type] != 0) {
+            for (const auto& field : namesFields[type]) {
+                m_fieldsNames.push_back(field);
+            }
+            pathHeader = pathFileOut + tagTypeForNameFile[type] + ".bin";
+            makeHeader(npartTotal64[type], pathHeader, m_fieldsNames, m_cellSize, m_cellComp, m_volumeOrTable);
+            m_fieldsNames.clear();
+            pathHeader.clear();
+        }
+    }
+}
+
+
+void GadgetSource::generateMap(std::unordered_map<std::string, int>& targetMap,
+                               const std::vector<std::string>& keys,
+                               const std::vector<int>& values) {
+    for (size_t i = 0; i < keys.size(); ++i) {
+        targetMap[keys[i]] = values[i];
+    }
+}
+
+void GadgetSource::initializeParticleCounts(unsigned long long npartTotal64[6]) {
+    for (int type = 0; type < 6; type++) {
+        npartTotal64[type] = (static_cast<unsigned long long>(m_pHeaderType2[0].NallWH[type]) << 32) 
+                             + m_pHeaderType2[0].npartTotal[type];
+    }
+}
+
+void GadgetSource::computeTypePositions(const std::vector<std::string>& listOfBlocks, 
+                                        const std::unordered_map<std::string, int>& mapBlockNamesToFields, 
+                                        const std::unordered_map<std::string, int>& mapBlockSize, 
+                                        std::vector<std::vector<int>>& typePosition) {
+    int numTypes = 6;
+    typePosition.assign(listOfBlocks.size() + 1, std::vector<int>(numTypes, 0));
+
+    for (int j = 0; j < numTypes; j++) {
+        for (size_t i = 0; i < listOfBlocks.size(); i++) {
+            if (iCompare(listOfBlocks[i], "MASS") != 0 || 
+                (iCompare(listOfBlocks[i], "MASS") == 0 && m_pHeaderType2[0].mass[j] == 0)) {
+                typePosition[i + 1][j] = blocksFields[mapBlockNamesToFields.at(listOfBlocks[i])][j] * 
+                                         mapBlockSize.at(listOfBlocks[i]);
+            } else {
+                typePosition[i + 1][j] = 0;
+            }
+        }
+    }
+
+    for (int j = 0; j < numTypes; j++) {
+        for (size_t i = 1; i < listOfBlocks.size(); i++) {
+            typePosition[i][j] += typePosition[i - 1][j];
+        }
+    }
+}
+
+void GadgetSource::computeFileStartPositions(int numFiles, const std::vector<headerType2>& m_pHeaderType2, 
+                                             std::vector<std::vector<long long>>& fileStartPosition) {
+    int numTypes = 6;  
+    fileStartPosition.assign(numTypes, std::vector<long long>(numFiles + 1, 0));
+    
+    for (int file = 1; file < numFiles; file++) {
+        for (int type = 0; type < numTypes; type++) {
+            fileStartPosition[type][file] = fileStartPosition[type][file - 1] + 
+                                            static_cast<unsigned long long>(m_pHeaderType2[file - 1].npart[type]);
+          }
+    }
+}
+
+void GadgetSource::setNumFiles(int n) {
+    if (n < 1) {
+        std::cerr << "Error: numFiles must be at least 1." << std::endl;
+        return;
+    }
+    this->numFiles = n;
+}
+
+
+std::vector<std::string> GadgetSource::extractBlockList(const std::string& fileName, bool needSwap) {
+    std::ifstream fStream(fileName + "0", std::ios::binary);
+    if (!fStream.is_open()) {
+        throw std::runtime_error("Error opening file: " + fileName + "0");
+    }
+
+    fStream.seekg(280, std::ios::beg);
+    std::vector<std::string> listOfBlocks;
+    char tagTmp[5] = "";
+    std::string tag;
+
+    while (fStream.peek() != EOF) {
+        fStream.seekg(4, std::ios::cur);
+        fStream.read(tagTmp, 4);
+        tagTmp[4] = '\0'; 
+        tag = strtok(tagTmp, " ");
+
+        if (std::find(blockNamesToCompare.begin(), blockNamesToCompare.end(), tag) != blockNamesToCompare.end() &&
+            iCompare(tag, "Zs") != 0) {
+            if (m_fields.empty() || std::find(m_fields.begin(), m_fields.end(), tag) != m_fields.end()) {
+                listOfBlocks.push_back(tag);
+            }
+        }
+
+        fStream.read(reinterpret_cast<char*>(m_sizeBlock), sizeof(int));
+        if (needSwap) {
+            m_sizeBlock[0] = intSwap(reinterpret_cast<char*>(&m_sizeBlock[0]));
+        }
+
+        fStream.seekg(m_sizeBlock[0], std::ios::cur);
+        fStream.read(reinterpret_cast<char*>(m_sizeBlock), sizeof(int));
+    }
+
+    fStream.close();
+    return listOfBlocks;
+}
+
+void GadgetSource::openOutputFiles(const std::string& pathFileOut, 
+                                   const std::vector<std::string>& tagTypeForNameFile, 
+                                   const std::string& bin, 
+                                   const unsigned long long npartTotal64[6], 
+                                   int outFileBin[6]) {
+    for (int type = 0; type < 6; type++) {
+        outFileBin[type] = -1; 
+
+        if (npartTotal64[type] != 0) {	
+            std::string nameFileBinOut = pathFileOut + tagTypeForNameFile[type] + bin;
+            outFileBin[type] = creat(nameFileBinOut.c_str(), S_IRWXU);
+
+            // Check for errors in file creation
+            if (outFileBin[type] == -1) {
+                std::cerr << "Error: Failed to create output file " << nameFileBinOut << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+        }
+    }
+}
+
+void GadgetSource::openInputFiles(const std::string& fileName, int numFiles, int inFile[]) {
+    std::filesystem::path p(fileName);
+
+    std::string baseFileName = fileName;
+    if (numFiles > 1 && p.has_extension() && isNumeric(p.extension().string().substr(1))) {
+        baseFileName = fileName.substr(0, fileName.rfind('.')); // Remove numerical extension
+    }
+
+    for (int i = 0; i < numFiles; i++) {
+        std::string fullPath = (numFiles > 1) ? baseFileName + std::to_string(i) : baseFileName;
+        inFile[i] = open(fullPath.c_str(), O_RDONLY);
+        if (inFile[i] == -1) {
+            std::cerr << "Error opening input file: " << fullPath << std::endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+
 
 //--------------------------------------
 void GadgetSource::swapHeaderType2()

@@ -23,7 +23,7 @@
 
 #include <string>
 #include <vector>
-
+#include <gtest/gtest.h>
 
 
 class AbstractSource
@@ -34,6 +34,7 @@ class AbstractSource
     AbstractSource();
     virtual ~AbstractSource() = default;
 
+    void setEndianism(const std::string& s);
     void setPointsFileName(const char* fileName, const char* binaryName, 
 				       const char* tableOrVolume, double size[], 
 				       double comput[], const char* file, 
@@ -47,7 +48,6 @@ class AbstractSource
 
     void setPointsFileName(const char *fileName,const char *binaryName);
 //     void releaseResources();
-
     virtual int readHeader() = 0;
     virtual int readData() = 0;
     
@@ -80,7 +80,7 @@ class AbstractSource
     std::vector<std::string>  m_hyperslab;
     std::vector<std::string>  m_fields;
     int m_fitshdunum;
-
+    private:
 };
 
 #endif
