@@ -95,6 +95,23 @@ struct headerType1
 	int      sizeFirstBlock[1];
    
 };
+struct FileData {
+    std::vector<int> inFile;
+    int outFileBin[6];
+};
+
+struct BlockData {
+    std::vector<std::string> listOfBlocks;
+    std::unordered_map<std::string, int> mapBlockNamesToFields;
+    std::unordered_map<std::string, int> mapBlockSize;
+    std::vector<std::vector<int>> typePosition;
+    std::vector<std::vector<long long>> fileStartPosition;
+};
+
+struct ProcessingConfig {
+    int proc_id;
+    int num_proc;
+};
     const std::vector<std::string> blockNamesToCompare = {
         "POS",  // 0
         "VEL",  // 1
@@ -185,18 +202,6 @@ struct headerType1
         "SSFR" // 84
         //"PID"   // 85 long long?
     };
-      
-  const std::vector<std::vector<bool>> blocksFields = 
-  { 
-    {1,1,1,1,1,1}, // 0: POS, VEL, ID, MASS, IDU, TSTP, POT, ACCE
-    {1,0,0,0,0,0}, // 1: U, TEMP, RHO, NE, NH, HSML, SFR, CLDX, ENDT, HOTT, MHOT, MCLD, EHOT, MSF, MFST, NMF, EOUT, EREC, EOLD, TDYN, SFRo, CLCK, Egy0, GRAD, GLEN, GOFF, MTOT, GPOS, MVIR, RVIR, M25K, R25K, M500, R500, MGAS, MSTR, TGAS, LGAS, NCON, MCON, NSUB, FSUB
-    {0,0,0,0,1,1}, // 2: AGE
-    {1,0,0,0,1,0}, // 3: Z, Zs, ZAGE, ZALV
-    {0,0,0,0,1,0}, // 4: iM
-    {0,0,0,0,0,1},  // 5: BHMA, BHMD, BHPC, ACRB
-    {0,0,0,1,0,0},  // 6: BGPO, BGMA, BGRA
-    {0,1,0,0,0,0}  // 7: SLEN, SOFF, SSUB, MSUB, SPOS, SVEL, SCM, SPIN, DSUB, VMAX, RMAX, RHMS, MBID, GRNR, SMST, SLUM, SLAT, SLOB, DUST, SAGE, SZ, SSFR
-  };
 
   const std::vector<int> blockNamesToFields 
   {
@@ -237,11 +242,27 @@ private:
     int m_snapformat;
     char tmpType[4]; 
     int numBlock;
+    bool needSwap;
     int m_sizeBlock[1];
+    std::vector<std::vector<bool>> blocksFields = 
+    { 
+      {1,1,1,1,1,1}, // 0: POS, VEL, ID, MASS, IDU, TSTP, POT, ACCE
+      {1,0,0,0,0,0}, // 1: U, TEMP, RHO, NE, NH, HSML, SFR, CLDX, ENDT, HOTT, MHOT, MCLD, EHOT, MSF, MFST, NMF, EOUT, EREC, EOLD, TDYN, SFRo, CLCK, Egy0, GRAD, GLEN, GOFF, MTOT, GPOS, MVIR, RVIR, M25K, R25K, M500, R500, MGAS, MSTR, TGAS, LGAS, NCON, MCON, NSUB, FSUB
+      {0,0,0,0,1,1}, // 2: AGE
+      {1,0,0,0,1,0}, // 3: Z, Zs, ZAGE, ZALV
+      {0,0,0,0,1,0}, // 4: iM
+      {0,0,0,0,0,1},  // 5: BHMA, BHMD, BHPC, ACRB
+      {0,0,0,1,0,0},  // 6: BGPO, BGMA, BGRA
+      {0,1,0,0,0,0}  // 7: SLEN, SOFF, SSUB, MSUB, SPOS, SVEL, SCM, SPIN, DSUB, VMAX, RMAX, RHMS, MBID, GRNR, SMST, SLUM, SLAT, SLOB, DUST, SAGE, SZ, SSFR
+    };
+    unsigned long long npartTotal64[6];
     std::vector<std::string> checkType;
     std::string tagType;
     std::vector<headerType2> m_pHeaderType2;
     struct headerType1 m_pHeaderType1;
+    FileData fileData;
+    ProcessingConfig processingConfig;
+    BlockData blockData;
 
     void swapHeaderType2();
     void swapHeaderType1();
@@ -256,23 +277,16 @@ private:
                                const std::vector<int>& values);
     std::string processFileName(std::string s);          
     std::vector<std::string> extractBlockList(const std::string& fileName, bool needSwap);  
-    void computeTypePositions(const std::vector<std::string>& listOfBlocks, 
-                          const std::unordered_map<std::string, int>& mapBlockNamesToFields, 
-                          const std::unordered_map<std::string, int>& mapBlockSize, 
-                          std::vector<std::vector<int>>& typePosition);
+    void computeTypePositions();
 
-    void computeFileStartPositions(int numFiles, const std::vector<headerType2>& m_pHeaderType2, 
-                                  std::vector<std::vector<long long>>& fileStartPosition);
+    void computeFileStartPositions(int numFiles, const std::vector<headerType2>& m_pHeaderType2);
 
     void openOutputFiles(const std::string& pathFileOut, 
                      const std::vector<std::string>& tagTypeForNameFile, 
-                     const std::string& bin, 
-                     const unsigned long long npartTotal64[], 
-                     int outFileBin[6]);
+                     const std::string& bin);
 
     void openInputFiles(const std::string& fileName, 
-                    int numFiles, 
-                    int inFile[]);
+                    int numFiles);
 
     void extractHeaderFields(const std::vector<std::string>& listOfBlocks, 
                            const std::unordered_map<std::string, int>& mapBlockSize,
@@ -281,18 +295,9 @@ private:
 
     void writeHeaderFiles(const std::string& pathFileOut, 
                       const std::vector<std::vector<std::string>>& namesFields, 
-                      const std::vector<std::string>& tagTypeForNameFile, 
-                      const unsigned long long* npartTotal64);    
+                      const std::vector<std::string>& tagTypeForNameFile);    
 
-    void processBlocksParallel(int proc_id, int num_proc, int totBlocks, int numFiles,
-                      int* inFile, int* outFileBin, 
-                      const std::vector<std::string>& listOfBlocks,
-                      const std::unordered_map<std::string, int>& mapBlockNamesToFields,
-                      const std::unordered_map<std::string, int>& mapBlockSize,
-                      const unsigned long long* npartTotal64,
-                      const std::vector<std::vector<int>>& typePosition,
-                      const std::vector<std::vector<long long>>& fileStartPosition,
-                      bool needSwap);
+    void processBlocksParallel(int totBlocks);
           
     long long findBlockOffset(int fileDescriptor, const std::string& targetBlock, bool needSwap);
 
@@ -302,22 +307,8 @@ private:
 
     void allocateBuffers(int blockSize, unsigned long long chunk, float*& bufferBlock, std::vector<float*>& buffers);
 
-    void readAndProcessData(int fileDescriptor, float* bufferBlock, 
-                            std::vector<float*>& buffers, int blockSize, 
-                            unsigned long long chunk, long long unsigned int& offset, bool needSwap);
-
-    void writeProcessedData(int outputFile, std::vector<float*>& buffers, 
-                            unsigned long long chunk, unsigned long long pWrite, int blockSize);
-
-    void processParticle(int type, int nBlock, int nFile, 
-                     const std::vector<std::string>& listOfBlocks,
-                     const std::unordered_map<std::string, int>& mapBlockNamesToFields,
-                     const std::unordered_map<std::string, int>& mapBlockSize,
-                     const std::vector<std::vector<int>>& typePosition, 
-                     const std::vector<std::vector<long long>>& fileStartPosition, 
-                     const unsigned long long* npartTotal64, 
-                     unsigned long long* minPart, bool needSwap,
-                     int* inFile, int* outFileBin, long long unsigned int offset);
+    void processParticle(int type, int nBlock, int nFile,
+                     unsigned long long* minPart, long long unsigned int offset);
     
     bool isValidParticleType(int type, int nFile, int nBlock,
                          const std::vector<std::string>& listOfBlocks,
@@ -326,12 +317,11 @@ private:
     void allocateBuffers(int blockSize, unsigned long long chunk, std::vector<float*>& buffers);
 
     void processChunk(int fileDescriptor, float* bufferBlock, std::vector<float*>& buffers, 
-                  int blockSize, unsigned long long chunk, long long unsigned int& offset, 
-                  bool needSwap);
+                  int blockSize, unsigned long long chunk, long long unsigned int& offset);
 
     void writeChunkData(int outputFile, const std::vector<float*>& buffers, 
                     unsigned long long chunk, unsigned long long pToStart, 
-                    unsigned long long chunkIndex, const unsigned long long* npartTotal64, 
+                    unsigned long long chunkIndex, 
                     int blockSize, int type);              
 };
   
