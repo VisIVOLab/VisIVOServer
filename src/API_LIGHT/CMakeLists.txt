@@ -17,6 +17,11 @@ find_package(CURL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
+find_library(TIRPC_LIBRARIES
+    NAMES tirpc
+)
+
+
 set(API_HEADERS
     visivo.h
     visivodef.h
@@ -217,7 +222,7 @@ target_link_libraries(VisIVOApi PRIVATE
     OpenMP::OpenMP_CXX
     ${VTK_LIBRARIES}
     ${HDF5_LIBRARIES}
-    tirpc
+    ${TIRPC_LIBRARIES}
 )
 
 install(TARGETS VisIVOApi DESTINATION lib)

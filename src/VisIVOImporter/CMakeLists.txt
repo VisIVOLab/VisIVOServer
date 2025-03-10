@@ -116,6 +116,10 @@ find_package(VTK 9.1.0 REQUIRED COMPONENTS
     zlib
 )
 
+find_library(TIRPC_LIBRARIES
+    NAMES tirpc
+)
+
 set(IMPORTER_SOURCE
     Importers/abstractsource.cpp
     Importers/abstractsource.h
@@ -183,7 +187,7 @@ target_link_libraries(VisIVOImporter PRIVATE
     OpenMP::OpenMP_CXX
     ${VTK_LIBRARIES}
     stdc++fs
-    tirpc
+    ${TIRPC_LIBRARIES}
 )
 
 install(TARGETS VisIVOImporter DESTINATION bin)
