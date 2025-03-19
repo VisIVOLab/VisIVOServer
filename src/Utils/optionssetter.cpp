@@ -2869,7 +2869,7 @@ void OptionsSetter::showHelp()
 {
     
     std::clog<<std::endl;
-    std::clog<<"VisIVOViewer Version 2.2 July 17th 2013 "<<std::endl<<std::endl;
+    std::clog<<"VisIVOViewer Version 3.5.0 March 19th 2025 "<<std::endl<<std::endl;
     
     std::clog<<"     [pathfile] (mandatory) Absolute path file. Path must be the last command(e.g. /home/user/VisivoBinaryTable.bin)"<<std::endl<<std::endl;
     

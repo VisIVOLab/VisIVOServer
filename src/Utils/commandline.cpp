@@ -702,23 +702,24 @@ void CommandLine::showHelp ()
 //---------------------------------------------------------------------
  
 {
-  
 	std::cout<<std::endl;
-   	std::cout<<"VisIVOImporter Version 2.1.1 June 28th 2013 "<<std::endl<<std::endl;
+   	std::cout<<"VisIVOImporter Version 3.5.0 March 19th 2025 "<<std::endl<<std::endl;
   
-	std::cout<<" --fformat   [typefile]  (mandatory) Select file type: ascii, csv, votable, binary, fly, gadget, xml, rawpoints, rawgrids, fitstable, fitsimage, hdf5, muportal, ramses"<<std::endl<<std::endl;
+	std::cout<<" --fformat   [typefile]  (mandatory) Select file type: ascii, csv, votable, binary, fly, gadget, xml, rawpoints, rawgrids, fitstable, fitsimage, hdf5, muportal, ramses, changa"<<std::endl<<std::endl;
 
 	std::cout<<"[pathfile] (mandatory) Absolute path file. Path must be the last command( /home/user/myfile.ascii)"<<std::endl<<std::endl;
 
 	std::cout<<"--out [filename]   (optional) Change default file name  and or directory ( --out /home/user/myfile.bin )  "<<std::endl<<std::endl;
 
-	std::cout<<"--volume  (optional)  if you want a table for volume.Is mandatory if you want select cell size and/or computational cell size "<<std::endl<<std::endl; 
+	std::cout<<"--volume  (optional)  if you want a table for volume. It is mandatory if you want select cell size and/or computational cell size "<<std::endl<<std::endl; 
   
 	std::cout<<"--sizex [double] --sizey [double]  --sizez [double]  (optional)  if you want  select cell size(--sizex 1 --sizey 1  --sizez 1 ). If you use this command --volume is mandatory .If don't use this commands default size is 1 1 1 "<<std::endl<<std::endl; 
   
 	std::cout<<"--compx [double] --compy [double] --compz [double]  (optional)  if you want  select computational cell size. If the mathematical product of this tree values is different from field size the created output will be a table."<<std::endl<<std::endl; 
   
 	std::cout<<"--bigendian (optional) use this command only if 'gadget' and 'fly' format file are big endian"<<std::endl<<std::endl;
+
+	std::cout<<"--fields [field_1] [field_2] ... (optional) use this command only when using 'gadget' format to specify which fields you need to import"<<std::endl<<std::endl;
    
 	std::cout<<"--double (optional) use this command only if the 'fly' format file has double data type"<<std::endl<<std::endl; 
   
@@ -730,8 +731,5 @@ void CommandLine::showHelp ()
 
     std::cout<<"--history (optional) create an XML file which contains the history of operations performed (default create hist.xml file)"<<std::endl<<std::endl;
     
-    std::cout<<"--historyfile [filename]   (optional) Change default history file name  and or directory "<<std::endl<<std::endl;
-    
-
-  
+    std::cout<<"--historyfile [filename]   (optional) Change default history file name  and or directory "<<std::endl<<std::endl; 
 }
