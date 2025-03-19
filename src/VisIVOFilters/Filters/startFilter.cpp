@@ -104,7 +104,7 @@ startFilter::startFilter(std::map<std::string,std::string> appParameters)
             iter =appParameters.find("help");
             if( iter == appParameters.end())
                 std::cerr <<"No operation is requested"<<std::endl;
-            std::cerr<<"VisIVOFilters version  2.1.1 June 28th 2013"<<std::endl<<std::endl;
+            std::cerr<<"VisIVOFilters version  3.5.0 March 19th 2025"<<std::endl<<std::endl;
             std::cerr <<"Syntax1: VisIVOFilters --op operation  [PARAMETERS] [--help]"<<std::endl;
             std::cerr <<"Syntax2: VisIVOFilters parameterFile"<<std::endl;
             std::cerr <<"valid operations: randomizer selcolumns merge append selfield mathop decimator extraction visualop showtable statistic pointdistribute pointproperty coarsevolume extractsubvolume interpolate module sigmacontours cartesian2polar AHFstep vbt2ahf grid2point extractlist addId ahfhalolist ahfhalogalaxyext changecolname splittable wrvotable include mres poca"<<std::endl;
