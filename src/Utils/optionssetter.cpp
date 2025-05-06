@@ -509,6 +509,40 @@ int OptionsSetter::parseOption (const std::vector<std::string>  arguments )
             
             viewParameter["cycle_skip_to"]=ss.str();
         }
+
+        if(params.param_present("autorange"))
+        {
+            tmp =params.find<std::string>("autorange","no");
+            if(tmp=="yes")
+            {
+                m_vServer.autoRange="yes";
+                viewParameter["autoRange"]="yes";
+            }
+        }
+
+        if(params.param_present("autorangemin"))
+        {
+            m_vServer.setAutoRangeMin=true;
+            m_vServer.autoRangeMin =params.find<float>("autorangemin",-1);
+            
+            std::stringstream ss;//create a stringstream
+            ss << m_vServer.autoRangeMin;//add number to the stream
+
+            
+            viewParameter["autoRangeMin"]=ss.str();
+        }
+
+        if(params.param_present("autorangemax"))
+        {
+            m_vServer.setAutoRangeMax=true;
+            m_vServer.autoRangeMax =params.find<float>("autorangemax",-1);
+            
+            std::stringstream ss;//create a stringstream
+            ss << m_vServer.autoRangeMax;//add number to the stream
+
+            
+            viewParameter["autoRangeMax"]=ss.str();
+        }
         
         if(params.param_present("colorrangeto"))
         {

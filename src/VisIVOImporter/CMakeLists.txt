@@ -5,6 +5,8 @@ project(VisIVOImporter CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+option(HAS_CHANGA_IMPORTER "Enable support for Changa importer" OFF)
+
 find_package(CFITSIO REQUIRED)
 find_package(HDF5 REQUIRED)
 find_package(CURL REQUIRED)
@@ -156,6 +158,14 @@ set(IMPORTER_SOURCE
     Importers/vtksource.h
 )
 
+if(USE_CHANGASOURCE)
+    list(APPEND IMPORTER_SOURCE
+        Importers/changasource.cpp
+        Importers/changasource.h
+    )
+    
+endif()
+
 set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/commandline.cpp
     ${UTILS_SOURCE_DIR}/commandline.h
@@ -187,8 +197,11 @@ target_link_libraries(VisIVOImporter PRIVATE
     OpenMP::OpenMP_CXX
     ${VTK_LIBRARIES}
     stdc++fs
-    ${TIRPC_LIBRARIES}
 )
+
+if(HAS_CHANGA_IMPORTER)
+    target_link_libraries(VisIVOImporter PRIVATE ${TIRPC_LIBRARIES})
+endif()
 
 install(TARGETS VisIVOImporter DESTINATION bin)
 

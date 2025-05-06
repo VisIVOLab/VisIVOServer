@@ -174,7 +174,6 @@ struct VisIVOServerOptions
     
     //splotch recalc cam
     bool autocalcCam;
-
 };
 
 class OptionsSetter
