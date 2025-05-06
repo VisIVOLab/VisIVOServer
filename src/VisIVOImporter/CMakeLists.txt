@@ -118,10 +118,6 @@ find_package(VTK 9.1.0 REQUIRED COMPONENTS
     zlib
 )
 
-find_library(TIRPC_LIBRARIES
-    NAMES tirpc
-)
-
 set(IMPORTER_SOURCE
     Importers/abstractsource.cpp
     Importers/abstractsource.h
@@ -129,8 +125,6 @@ set(IMPORTER_SOURCE
     Importers/asciisource.h
     Importers/binsource.cpp
     Importers/binsource.h
-    Importers/changasource.cpp
-    Importers/changasource.h
     Importers/csvsource.cpp
     Importers/csvsource.h
     Importers/fitsimagesource.cpp
@@ -158,12 +152,11 @@ set(IMPORTER_SOURCE
     Importers/vtksource.h
 )
 
-if(USE_CHANGASOURCE)
+if(HAS_CHANGA_IMPORTER)
     list(APPEND IMPORTER_SOURCE
         Importers/changasource.cpp
         Importers/changasource.h
     )
-    
 endif()
 
 set(UTILS_SOURCE
@@ -200,7 +193,11 @@ target_link_libraries(VisIVOImporter PRIVATE
 )
 
 if(HAS_CHANGA_IMPORTER)
+    find_library(TIRPC_LIBRARIES
+        NAMES tirpc
+    )
     target_link_libraries(VisIVOImporter PRIVATE ${TIRPC_LIBRARIES})
+    target_compile_definitions(VisIVOImporter PRIVATE HAS_CHANGA_IMPORTER=1)
 endif()
 
 install(TARGETS VisIVOImporter DESTINATION bin)

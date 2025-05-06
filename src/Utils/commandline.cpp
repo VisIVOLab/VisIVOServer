@@ -31,7 +31,9 @@
 #include "csvsource.h"
 #include "binsource.h"
 #include "flysource.h"
+#ifdef HAS_CHANGA_IMPORTER
 #include "changasource.h"
+#endif
 #include "vosourcenew.h"
 #include "gadgetsource.h"
 
@@ -639,8 +641,14 @@ int CommandLine::loadFile ()
 		else if(m_type=="gadget")
 			pSource = new GadgetSource();
 
-		else if(m_type=="changa")
+		else if(m_type=="changa"){
+#ifdef HAS_CHANGA_IMPORTER
 			pSource = new ChangaSource();
+#else
+    		std::clog << "VisIVOServer Changa Importer not enabled at compile time" << std::endl;
+			return -1;
+#endif
+		}
 
 #ifndef LIGHT
 		else if(m_type=="xml")
