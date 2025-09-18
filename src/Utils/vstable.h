@@ -28,9 +28,11 @@
 #include "vsobject.h"
 #include <string>
 #include <vector>
+#include <algorithm> 
 
 class VSTable : public VSObject
 {
+  protected:
   std::string m_locator; //! table path
   std::string m_endiannes;  //! endianism
   std::string m_type; //! data format (float, double ecc..)
@@ -48,6 +50,8 @@ class VSTable : public VSObject
   bool m_isVolume;  //! true if table represent a volumetrivìc data
   unsigned int m_cellNumber[3];  //! number of cell of the volume (mesh)
   float m_cellSize[3]; //!cell geometry
+
+  std::vector<std::vector<float>> fieldArray; //! vector containing the columns content
 
 
 public:
@@ -78,7 +82,8 @@ public:
   void setCellNumber(unsigned int xCellNumber, unsigned int yCellNumber, unsigned int zCellNumber);
   void setCellSize(float xCellSize, float yCellSize, float zCellSize);
   //void SetNumberOfCols(unsigned int nCols) {m_nCols = nCols;};
-  bool addCol(std::string name); //! add an element (a column name) to the vector m_colVector
+  virtual bool addCol(std::string name); //! add an element (a column name) to the vector m_colVector
+  virtual bool addCol(std::vector<std::string> listOfCol);
   void setColName(unsigned int i, std::string newColName); //! change the column name in the i position. The first column is 0.
 
   std::string getColName(unsigned int i); //! return the column name in the i position
@@ -86,19 +91,20 @@ public:
 
   bool writeHeader(); //! write a new table header with the given member variables
 
-  int getColumn(unsigned int *colList, unsigned int nOfCol, unsigned long long int fromRow, unsigned long long int toRow, float **fArray); //! colList is a vector of nOfCol Elements, listing the columns ID I want to read. fArray is a 2D allocated array fArray[nOfCol,(toRow-fromRow+1)]: the method fill fArray with the column listed in colList (first column is 0: colList contains data in the range  0 - m_nCols -1) and with the postion specified in fromRow toRow. fromRow starts from 0.
-  int getColumn(int colNumber,float *Col, int fromRow=-1, int toRow=-1); //! get only one column. colNumerb is the columns ID. Col is an allocated pointer Col[toRow-fromRow+1]: the method fill Col with the column ID (first column is 0: in the range  0 - m_nCols -1) and with the postion specified in fromRow toRow-1. fromRow starts from 0. Default value -1 will read all column
-  int getColumnList(unsigned int *colList, unsigned  int nOfCol, unsigned long long int *list, int nOfEle, float **fArray);//! colList is a vector of nOfCol Elements, listing the columns ID I want to read. First column is 0. list is a vectorn of nOfEle elements I want to read from the table. fArray is a 2D allocated array fArray[nOfCol,nOfEle]: the method fill fArray with the column listed in colList (first column is 0: colList contains data in the range  0 - m_nCols -1) and with elements listed in list
-  int putColumn(unsigned int *colList, unsigned int nOfCol, unsigned long long int fromRow, unsigned long long int toRow, float **fArray);  //!  put data (see getColumn)
-  int putColumnList(unsigned int *colList,unsigned int nOfCol, unsigned long long int *list, int nOfEle, float **fArray);//! put data (see getColumnList)
+  virtual int getColumn(unsigned int *colList, unsigned int nOfCol, unsigned long long int fromRow, unsigned long long int toRow, float **fArray); //! colList is a vector of nOfCol Elements, listing the columns ID I want to read. fArray is a 2D allocated array fArray[nOfCol,(toRow-fromRow+1)]: the method fill fArray with the column listed in colList (first column is 0: colList contains data in the range  0 - m_nCols -1) and with the postion specified in fromRow toRow. fromRow starts from 0.
+  virtual int getColumn(int colNumber,float *Col, int fromRow=-1, int toRow=-1); //! get only one column. colNumerb is the columns ID. Col is an allocated pointer Col[toRow-fromRow+1]: the method fill Col with the column ID (first column is 0: in the range  0 - m_nCols -1) and with the postion specified in fromRow toRow-1. fromRow starts from 0. Default value -1 will read all column
+  virtual int getColumnList(unsigned int *colList, unsigned  int nOfCol, unsigned long long int *list, int nOfEle, float **fArray);//! colList is a vector of nOfCol Elements, listing the columns ID I want to read. First column is 0. list is a vectorn of nOfEle elements I want to read from the table. fArray is a 2D allocated array fArray[nOfCol,nOfEle]: the method fill fArray with the column listed in colList (first column is 0: colList contains data in the range  0 - m_nCols -1) and with elements listed in list
+  virtual int putColumn(unsigned int *colList, unsigned int nOfCol, unsigned long long int fromRow, unsigned long long int toRow, float **fArray);  //!  put data (see getColumn)
+  virtual int putColumnList(unsigned int *colList,unsigned int nOfCol, unsigned long long int *list, int nOfEle, float **fArray);//! put data (see getColumnList)
 
-  bool writeTable(float **fArray);  //!write header and table (fArray must contain all data table)
-  bool createTable(float **fArray); //!write data (header already exist) in the table
-  bool writeTable();  //!write only header
-  bool createTable(); //!write a zero filled table
-  bool tableExist() { return m_tableExist;}; //! table already exist 
+  virtual bool writeTable(float **fArray);  //!write header and table (fArray must contain all data table)
+  virtual bool createTable(float **fArray); //!write data (header already exist) in the table
+  virtual bool writeTable();  //!write only header
+  virtual bool createTable(); //!write a zero filled table
+  virtual bool tableExist() { return m_tableExist;}; //! table already exist 
   bool readHeader(); //! fuction that read  the header table (filling the above values)
 
 };
 
 #endif
+ 

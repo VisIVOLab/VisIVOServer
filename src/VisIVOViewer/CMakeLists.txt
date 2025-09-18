@@ -163,6 +163,8 @@ set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/vsobject.h
     ${UTILS_SOURCE_DIR}/vstable.cpp
     ${UTILS_SOURCE_DIR}/vstable.h
+    ${UTILS_SOURCE_DIR}/vstablemem.cpp
+    ${UTILS_SOURCE_DIR}/vstablemem.h
 )
 
 add_executable(VisIVOViewer ${VIEWER_SOURCE} ${FILTERS_SOURCE} ${UTILS_SOURCE})

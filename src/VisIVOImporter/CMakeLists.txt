@@ -172,6 +172,12 @@ set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/tinyxmlparser.cpp
     ${UTILS_SOURCE_DIR}/visivoutils.cpp
     ${UTILS_SOURCE_DIR}/visivoutils.h
+    ${UTILS_SOURCE_DIR}/vstable.h
+    ${UTILS_SOURCE_DIR}/vstable.cpp
+    ${UTILS_SOURCE_DIR}/vstablemem.h
+    ${UTILS_SOURCE_DIR}/vstablemem.cpp
+    ${UTILS_SOURCE_DIR}/vsobject.h
+    ${UTILS_SOURCE_DIR}/vsobject.cpp
 )
 
 find_package(HDF5 REQUIRED)

@@ -301,8 +301,8 @@ void VSTable::setColName(unsigned int i, std::string newColName)
 
 int VSTable::getColId(std::string name)
 {
+  m_colVector.size();
   unsigned int size = m_colVector.size();
-
   for(unsigned int i = 0; i < size; ++i)
   {
     if(m_colVector[i] == name)
@@ -970,4 +970,20 @@ int VSTable::putColumnList(unsigned int *colList, unsigned int nOfCol, unsigned 
 	
   }
   return totLoad;
+}
+
+bool VSTable::addCol(std::vector<std::string> listOfCol)
+{
+  unsigned int newSize = listOfCol.size();
+  if(newSize == 0)
+    return false;
+
+  for (const auto& str : listOfCol) {
+    if (std::find(m_colVector.begin(), m_colVector.end(), str) == m_colVector.end()) {
+      m_colVector.push_back(str);
+      m_nCols++;
+    }
+  }
+
+  return true;
 }
