@@ -29,22 +29,23 @@
 #include "visivoutils.h"
 #include "asciisource.h"
 #include "csvsource.h"
-#include "binsource.h"
-#include "flysource.h"
 #ifdef HAS_CHANGA_IMPORTER
-#include "changasource.h"
+	#include "changasource.h"
 #endif
-#include "vosourcenew.h"
+#include "binsource.h"
 #include "gadgetsource.h"
+#include "flysource.h"
+#include "vosourcenew.h"
+//#include "hecubasource.h"
 
 #ifndef LIGHT
   #include "xmlsource.h"
   #include "vosource.h"
 #endif
 
-#include "fitstablesource.h"
-#include "fitsimagesource.h"
-#include "hdf5source.h"
+//#include "fitstablesource.h"
+//#include "fitsimagesource.h"
+//#include "hdf5source.h"
 #include "rawgridsource.h"
 #include "rawpointssource.h"
 #include "muportalsource.h"
@@ -93,7 +94,7 @@ CommandLine::CommandLine ( )
 CommandLine::~CommandLine ( )
 //---------------------------------------------------------------------
 {
- 
+	delete pSource;
 
 }
 //---------------------------------------------------------------------
@@ -199,6 +200,26 @@ int CommandLine::parseOption (const std::vector<std::string>  arguments )
 		else  if (arguments[i]=="--bigendian")
 		{
 			m_endian="big";
+		}		
+		else  if (arguments[i]=="--aliasparticle")
+		{
+			std::string ckInput=arguments[i+1];
+      		if(ckInput.find_first_of('-')==0)
+      		{
+        	    std::cerr<<"Error on "<<arguments[i]<< " argument: "<<ckInput<<std::endl;
+		    	return -1;
+      		}	
+			m_aliasParticle=arguments[++i].c_str();
+		}		
+		else  if (arguments[i]=="--aliasheader")
+		{
+			std::string ckInput=arguments[i+1];
+      		if(ckInput.find_first_of('-')==0)
+      		{
+        	    std::cerr<<"Error on "<<arguments[i]<< " argument: "<<ckInput<<std::endl;
+		    	return -1;
+      		}	
+			m_aliasHeader=arguments[++i].c_str();
 		}
  
     
@@ -416,6 +437,9 @@ int CommandLine::parseOption (const std::vector<std::string>  arguments )
             m_historyFile=arguments[++i];
             
 		}
+		else if(arguments[i]=="--inmemory"){
+			m_inMemory = true;
+		}
  
 	}
 	m_currentPath=arguments[(arguments.size()-1)]; //!filename including path!!
@@ -543,7 +567,7 @@ int CommandLine::parseOption (const std::vector<std::string>  arguments )
 
 		}
   
-	if(m_type!="fitstable" && m_type!="ramses" && m_type!="fitsimage")
+	if(m_type!="fitstable" && m_type!="ramses" && m_type!="fitsimage" && m_type!="hecuba")
 	{ 
 		std::ifstream inFile;
 		inFile.open(m_currentPath.c_str());
@@ -605,7 +629,6 @@ int CommandLine::loadFile ()
 	}
 	else
 	{ 
-		AbstractSource* pSource;
   
 		if ( m_type=="ascii")
 			pSource = new AsciiSource();
@@ -614,13 +637,13 @@ int CommandLine::loadFile ()
 		else if ( m_type=="binary")
 			pSource = new BinSource();
  
-		else if (m_type=="fitstable")
-			pSource = new FitsTableSource();
+		//else if (m_type=="fitstable")
+		//	pSource = new FitsTableSource();
    
-		else if(m_type=="fitsimage")
+		/*else if(m_type=="fitsimage")
         {
 			pSource = new FitsImageSource();
-        }
+        }*/
 		else if(m_type=="csv" )
 			pSource = new CSVSource();
 
@@ -641,22 +664,25 @@ int CommandLine::loadFile ()
 		else if(m_type=="gadget")
 			pSource = new GadgetSource();
 
-		else if(m_type=="changa"){
-#ifdef HAS_CHANGA_IMPORTER
+/*
+		else if(m_type=="hecuba")
 			pSource = new ChangaSource();
-#else
-    		std::clog << "VisIVOServer Changa Importer not enabled at compile time" << std::endl;
-			return -1;
+*/
+//		else if(m_type=="hecuba")
+//			pSource = new HecubaSource();
+#ifdef HAS_CHANGA_IMPORTER
+		else if(m_type=="changa")
+			pSource = new ChangaSource();
 #endif
-		}
 
 #ifndef LIGHT
 		else if(m_type=="xml")
 			pSource = new XmlSource();
 #endif
+/*
 		else if(m_type=="hdf5")
 			pSource = new HDF5Source();
-     
+     */
     
 		else if(m_type=="rawgrids")
 		{
@@ -672,14 +698,16 @@ int CommandLine::loadFile ()
 		  pSource = new RamsesSource();
 
 		}
+			
 		else
 		{ 
 			std::cerr<<"the format given '"<<m_type<<"' is incorrect, please try again  or --help for help"<<std::endl;
 			return -1;
 		}
+		pSource->setUseMem(m_inMemory);
 		pSource->setPointsFileName(m_currentPath.c_str(),m_binaryPath.c_str(),m_file.c_str(),
 					   m_size,m_comput,m_file.c_str(),m_endian.c_str(),
-					   m_dataType.c_str(),m_npoints,m_login.c_str(),
+					   m_dataType.c_str(),m_aliasParticle.c_str(), m_aliasHeader.c_str(),m_npoints,m_login.c_str(),
 					   m_binaryHeader.c_str(),m_missing,m_text,m_datasetList,
 					   m_hyperslab,m_fitshdunum, m_fields);
 		if(pSource->readHeader()==0)
@@ -689,8 +717,6 @@ int CommandLine::loadFile ()
             pSource->writeHistory(m_historyFile.c_str(),m_type.c_str(), m_out.c_str(), m_file.c_str(), m_comput, m_size, m_login.c_str(), m_binaryHeader.c_str(), m_missing, m_text, m_endian.c_str(), m_dataType.c_str(), m_npoints, m_VO.c_str(), m_se.c_str(), m_outlfn.c_str(),m_currentPath.c_str());
         }
         
-        
-		delete pSource;
 		if(m_gLiteOut)
 		{
 		  bool isvbt=true;
@@ -710,24 +736,23 @@ void CommandLine::showHelp ()
 //---------------------------------------------------------------------
  
 {
-	std::cout<<std::endl;
-   	std::cout<<"VisIVOImporter Version 3.5.0 March 19th 2025 "<<std::endl<<std::endl;
   
-	std::cout<<" --fformat   [typefile]  (mandatory) Select file type: ascii, csv, votable, binary, fly, gadget, xml, rawpoints, rawgrids, fitstable, fitsimage, hdf5, muportal, ramses, changa"<<std::endl<<std::endl;
+	std::cout<<std::endl;
+   	std::cout<<"VisIVOImporter Version 2.1.1 June 28th 2013 "<<std::endl<<std::endl;
+  
+	std::cout<<" --fformat   [typefile]  (mandatory) Select file type: ascii, csv, votable, binary, fly, gadget, xml, rawpoints, rawgrids, fitstable, fitsimage, hdf5, muportal, ramses"<<std::endl<<std::endl;
 
 	std::cout<<"[pathfile] (mandatory) Absolute path file. Path must be the last command( /home/user/myfile.ascii)"<<std::endl<<std::endl;
 
 	std::cout<<"--out [filename]   (optional) Change default file name  and or directory ( --out /home/user/myfile.bin )  "<<std::endl<<std::endl;
 
-	std::cout<<"--volume  (optional)  if you want a table for volume. It is mandatory if you want select cell size and/or computational cell size "<<std::endl<<std::endl; 
+	std::cout<<"--volume  (optional)  if you want a table for volume.Is mandatory if you want select cell size and/or computational cell size "<<std::endl<<std::endl; 
   
 	std::cout<<"--sizex [double] --sizey [double]  --sizez [double]  (optional)  if you want  select cell size(--sizex 1 --sizey 1  --sizez 1 ). If you use this command --volume is mandatory .If don't use this commands default size is 1 1 1 "<<std::endl<<std::endl; 
   
 	std::cout<<"--compx [double] --compy [double] --compz [double]  (optional)  if you want  select computational cell size. If the mathematical product of this tree values is different from field size the created output will be a table."<<std::endl<<std::endl; 
   
-	std::cout<<"--bigendian (optional) use this command only if 'gadget' and 'fly' format file are big endian"<<std::endl<<std::endl;
-
-	std::cout<<"--fields [field_1] [field_2] ... (optional) use this command only when using 'gadget' format to specify which fields you need to import"<<std::endl<<std::endl;
+	std::cout<<"--bigendian (optiona//l) use this command only if 'gadget' and 'fly' format file are big endian"<<std::endl<<std::endl;
    
 	std::cout<<"--double (optional) use this command only if the 'fly' format file has double data type"<<std::endl<<std::endl; 
   
@@ -739,5 +764,14 @@ void CommandLine::showHelp ()
 
     std::cout<<"--history (optional) create an XML file which contains the history of operations performed (default create hist.xml file)"<<std::endl<<std::endl;
     
-    std::cout<<"--historyfile [filename]   (optional) Change default history file name  and or directory "<<std::endl<<std::endl; 
+    std::cout<<"--historyfile [filename]   (optional) Change default history file name  and or directory "<<std::endl<<std::endl;
+    
+
+  
 }
+
+std::vector<VSTable*>& CommandLine::getTable() {//return pSource->getMemTables();
+
+    std::vector<VSTable*>& tables = pSource->getMemTables();
+    return tables;
+} ; 

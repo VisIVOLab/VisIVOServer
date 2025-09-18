@@ -23,7 +23,9 @@
 
 #include <string>
 #include <vector>
-
+#include <gtest/gtest.h>
+#include <vstable.h>
+#include <vstablemem.h>
 
 
 class AbstractSource
@@ -34,20 +36,26 @@ class AbstractSource
     AbstractSource();
     virtual ~AbstractSource() = default;
 
+    void setEndianism(const std::string& s);
     void setPointsFileName(const char* fileName, const char* binaryName, 
-			   const char* tableOrVolume, double size[], 
-			   double comput[], const char* file, const char* endian, 
-			   const char* type, long unsigned int points, 
-			   const char* login, const char* binaryHeader, 
-			   float missing, float text, std::string datasetdList,
-			   std::vector<std::string> hyperslab, int fitshdunum, std::vector<std::string> fields);
+				       const char* tableOrVolume, double size[], 
+				       double comput[], const char* file, 
+				       const char* endian, const char* type,
+               const char* aliasParticle, const char* aliasHeader, 
+				       long unsigned int points, 
+				       const char* login, const char* binaryHeader, 
+				       float missing, float text, 
+				       std::string datasetdList,
+				       std::vector<std::string> hyperslab, int fitshdunum, std::vector<std::string> fields);
 
     void setPointsFileName(const char *fileName,const char *binaryName);
 //     void releaseResources();
-
     virtual int readHeader() = 0;
     virtual int readData() = 0;
+    std::vector<VSTable*>& getMemTables();//{return memTables;}
     
+    
+    void setUseMem(bool use) { useMemory = use; }
     int writeHistory (const char* histFile,const char* format,const char* out,const char* tableOrVolume,double comput[],double size[],const char* login, const char* binaryHeader, float missing,float text, const char* endian,const char* type, long unsigned int points, const char* vo, const char* se, const char* lfnout,const char* inputFile);
 
 
@@ -67,6 +75,8 @@ class AbstractSource
     std::string m_type;
     std::string m_file;
     std::string m_endian;
+    std::string m_aliasParticle;
+    std::string m_aliasHeader;
     std::string m_login;
     std::string m_binaryHeader;
     std::string m_datasetList;
@@ -74,8 +84,10 @@ class AbstractSource
     int maxInt(){return MAX_INT;};
     std::vector<std::string>  m_hyperslab;
     std::vector<std::string>  m_fields;
+    std::vector<VSTable*> memTables;
     int m_fitshdunum;
-
+    bool useMemory;
+    private:
 };
 
 #endif

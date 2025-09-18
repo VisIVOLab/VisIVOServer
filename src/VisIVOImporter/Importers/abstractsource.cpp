@@ -70,7 +70,8 @@ AbstractSource::AbstractSource()
 void AbstractSource::setPointsFileName(const char* fileName, const char* binaryName, 
 				       const char* tableOrVolume, double size[], 
 				       double comput[], const char* file, 
-				       const char* endian, const char* type, 
+				       const char* endian, const char* type,
+               const char* aliasParticle, const char* aliasHeader, 
 				       long unsigned int points, 
 				       const char* login, const char* binaryHeader, 
 				       float missing, float text, 
@@ -100,6 +101,8 @@ void AbstractSource::setPointsFileName(const char* fileName, const char* binaryN
   m_nRows=points;
   m_type=type;
   m_endian=endian;
+  m_aliasHeader=aliasHeader;
+  m_aliasParticle=aliasParticle;
   MISSING_VALUE=missing;
   TEXT_VALUE=text;
     m_fitshdunum=fitshdunum;
@@ -129,6 +132,12 @@ void AbstractSource::setPointsFileName(const char *fileName,const char *binaryNa
 }
 
 //---------------------------------------------------------------------
+void AbstractSource::setEndianism(const std::string& s) {  
+//---------------------------------------------------------------------
+  m_endian = s;  
+}
+
+//---------------------------------------------------------------------
 int AbstractSource::readHeader()
 //---------------------------------------------------------------------
 {
@@ -154,3 +163,9 @@ int AbstractSource::writeHistory (const char* histFile,const char* format,const 
 }
 
 
+std::vector<VSTable*>& AbstractSource::getMemTables() {
+    if (memTables.empty()) {
+      std::cerr << "No available memTable" << std::endl;
+    }
+    return memTables;
+}

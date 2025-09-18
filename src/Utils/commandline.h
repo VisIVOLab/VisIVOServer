@@ -25,11 +25,12 @@
 
 #include <string>
 #include <vector>
-
+#include <abstractsource.h>
   
 
 class CommandLine
 {
+  AbstractSource* pSource;
   public:
     CommandLine ( );
     ~CommandLine ( );
@@ -39,14 +40,16 @@ class CommandLine
     std::string getRemoteFile() {return m_remoteFile;} ; 
     std::string getType() {return m_type;} ; 
 
-    std::string   m_currentPath, m_type,m_ext, m_binaryDir, m_binaryPath,  m_binaryName,m_binaryHeader, m_file, m_endian, m_dataType, m_out, m_login, m_remoteFile,m_datasetList;
+    std::vector<VSTable*>& getTable() ; 
+
+    std::string   m_currentPath, m_type,m_ext, m_binaryDir, m_binaryPath,  m_binaryName,m_binaryHeader, m_file, m_endian, m_dataType, m_out, m_login, m_remoteFile,m_datasetList, m_aliasHeader, m_aliasParticle;
     bool m_historyEnabled;
     float m_missing, m_text;
-double m_size[3],m_comput[3]; //!volume data
-unsigned long long int m_npoints;
+    double m_size[3],m_comput[3]; //!volume data
+    unsigned long long int m_npoints;
     std::vector<std::string> m_hyperslab;
     std::vector<std::string> m_fields;
-    bool m_gLiteOut;
+    bool m_gLiteOut, m_inMemory = false;
     std::string m_lfn, m_VO, m_outlfn, m_se, m_outPath,m_historyFile;
     int m_fitshdunum;
  
