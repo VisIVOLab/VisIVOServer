@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 option(HAS_CHANGA_IMPORTER "Enable support for Changa importer" OFF)
+option(HAS_HECUBA_IMPORTER "Enable support for Hecuba importer" OFF)
 
 find_package(CFITSIO REQUIRED)
 find_package(HDF5 REQUIRED)
@@ -159,6 +160,13 @@ if(HAS_CHANGA_IMPORTER)
     )
 endif()
 
+if(HAS_HECUBA_IMPORTER)
+    list(APPEND IMPORTER_SOURCE
+        Importers/hecubasource.cpp
+        Importers/hecubasource.h
+    )
+endif()
+
 set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/commandline.cpp
     ${UTILS_SOURCE_DIR}/commandline.h
@@ -204,6 +212,18 @@ if(HAS_CHANGA_IMPORTER)
     )
     target_link_libraries(VisIVOImporter PRIVATE ${TIRPC_LIBRARIES})
     target_compile_definitions(VisIVOImporter PRIVATE HAS_CHANGA_IMPORTER=1)
+endif()
+
+if(HAS_HECUBA_IMPORTER)
+    set(HECUBA_ROOT "/usr/local" CACHE PATH "Path to Hecuba installation")
+
+    find_library(HECUBA_HFETCH_LIBRARY hfetch PATHS ${HECUBA_ROOT}/lib)
+    if(NOT HECUBA_HFETCH_LIBRARY)
+        message(FATAL_ERROR "Hecuba hfetch library not found in ${HECUBA_ROOT}/lib")
+    endif()
+    target_include_directories(VisIVOImporter PRIVATE ${HECUBA_ROOT}/include ${HECUBA_ROOT}/include/hecuba)
+    target_link_libraries(VisIVOImporter PRIVATE ${HECUBA_HFETCH_LIBRARY}) 
+    target_compile_definitions(VisIVOImporter PRIVATE HAS_HECUBA_IMPORTER=1)
 endif()
 
 install(TARGETS VisIVOImporter DESTINATION bin)

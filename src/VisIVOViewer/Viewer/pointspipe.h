@@ -47,13 +47,10 @@ class vtkConeSource;
     PointsPipe( VisIVOServerOptions options);
     ~PointsPipe();
    
-  protected:
-   
+  protected: 
    int createPipe();
    void destroyAll();
-   
-
-
+  
   private:
     void setGlyphs (  );
     void setLookupTable ( );

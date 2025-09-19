@@ -19,78 +19,69 @@
  ***************************************************************************/
 
 
-#ifndef CHANGASOURCE_H
-#define CHANGASOURCE_H
+#ifndef HECUBASOURCE_H
+#define HECUBASOURCE_H
 
 #include "abstractsource.h"
 
 #include <vector>
 #include <string>
-#include <rpc/xdr.h>
-#include <rpc/rpc.h>
+#include "StorageDict.h"
+#include <StorageNumpy.h>
+#include <StorageObject.h>
+#include <StorageStream.h>
+#include <KeyClass.h>
+#include <vstable.h>
+#include <vstablemem.h>
+#include <ValueClass.h>
 
-
-struct header
-{
-    double time ;
-    int nbodies ;
-    int ndim ;
-    int nsph ;
-    int ndark ;
-    int nstar ;
-    int pad;
+class headerObject:public StorageObject{
+public:
+HECUBA_ATTRS (
+     double, time,
+     int32_t, nbodies,
+     int32_t, ndim,
+     int32_t, nsph,
+     int32_t, ndark,
+     int32_t, nstar,
+     int32_t, pad,
+    )
+};
+class particleObj:public StorageObject{
+    public:
+    HECUBA_ATTRS (
+        StorageNumpy, gasParticle,
+        StorageNumpy, darkParticle,
+        StorageNumpy, starParticle
+        );
 };
 
-struct gas_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float rho;
-    float temp;
-    float eps;
-    float metals ;
-    float phi ;
-};
+using Key = KeyClass<double, float, float, float, float, float, float>;
 
-struct dark_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float eps;
-    float phi ;
-};
+using Value = ValueClass<StorageNumpy>;
 
-struct star_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float metals ;
-    float tform ;
-    float eps;
-    float phi ;
-};
+class Dict: public StorageDict <Key,Value,Dict>, public StorageStream {
 
-class ChangaSource : public AbstractSource
+};
+class HecubaSource : public AbstractSource
    
 {
-  public:
+  public: 
     int readHeader();
     int readData();
-    ~ChangaSource();
-    ChangaSource();
+        
   private:
-
-    int xdr_header(struct header *, XDR);
+    void writeGasParticles(StorageNumpy s);
+    void writeDarkParticles(StorageNumpy s);
+    void writeStarParticles(StorageNumpy s);
     std::vector <std::string> m_fieldsNames;   
     unsigned int      npart_total[6];
-    XDR xdrread;
-    FILE *fpread;
+    
     int nsph;
     int ndark;
     int nstar;
     char m_dataType, m_Endian;
   
 };
-  
 
 #endif

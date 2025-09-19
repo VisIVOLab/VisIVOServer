@@ -104,7 +104,6 @@ int ChangaSource::readHeader()
   if(xdr_int(&xdrread, &pad) != TRUE)
     return 1;
 
-  //m_snapformat = 2;
   nsph = curHead.nsph;
   ndark = curHead.ndark;
   nstar = curHead.nstar;
@@ -120,11 +119,13 @@ int ChangaSource::readData()
   //gas_particle* gasParticles = (gas_particle*) malloc(sizeof(gas_particle)*nsph);
   std::ofstream outfile((pathFileOut + "GAS" + ".bin").c_str(),std::ofstream::binary );
   float* gasParticles = (float*) malloc(sizeof(float)*12*nsph);
+  std::clog << sizeof(gas_particle)*nsph << std::endl;
   if (gasParticles == NULL) {
     std::clog << "Malloc Error" << std::endl;
     return 1;
   }
   float* tmp = gasParticles;
+  std::clog << sizeof(gas_particle) << std::endl;
   for (int i=0; i<nsph; ++i) {
  // std::clog << i << std::endl;
     xdr_vector(&xdrread,(char *) tmp, (12),
@@ -239,7 +240,13 @@ int ChangaSource::readData()
   pathHeader = pathFileOut+"STAR"+ ".bin";
 	makeHeader(nstar, pathHeader, starBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
 
-  outfile.close();
+	outfile.close();
   
   return 1;
+}
+
+ChangaSource::~ChangaSource() {
+}
+
+ChangaSource::ChangaSource() {
 }

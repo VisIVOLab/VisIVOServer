@@ -36,8 +36,9 @@
 #include "gadgetsource.h"
 #include "flysource.h"
 #include "vosourcenew.h"
-//#include "hecubasource.h"
-
+#ifdef HAS_HECUBA_IMPORTER
+	#include "hecubasource.h"
+#endif
 #ifndef LIGHT
   #include "xmlsource.h"
   #include "vosource.h"
@@ -226,9 +227,11 @@ int CommandLine::parseOption (const std::vector<std::string>  arguments )
 		else if(arguments[i]=="--out")
 		{
 		  if(i==arguments.size()-2)
-		  {
-				std::cerr<<"Output file and input file cannot be have the same filename"<<std::endl;
-				return -1;
+		  {     
+			    if(m_type != "hecuba"){
+					std::cerr<<"Output file and input file cannot be have the same filename"<<std::endl;
+					return -1;
+				}
 		  }
       		  std::string ckInput=arguments[i+1];
       		  if(ckInput.find_first_of('-')==0)
@@ -668,8 +671,11 @@ int CommandLine::loadFile ()
 		else if(m_type=="hecuba")
 			pSource = new ChangaSource();
 */
-//		else if(m_type=="hecuba")
-//			pSource = new HecubaSource();
+#ifdef HAS_HECUBA_IMPORTER
+else if(m_type=="hecuba")
+			pSource = new HecubaSource();
+#endif
+
 #ifdef HAS_CHANGA_IMPORTER
 		else if(m_type=="changa")
 			pSource = new ChangaSource();

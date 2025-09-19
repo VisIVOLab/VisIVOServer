@@ -229,19 +229,6 @@ public:
     void setNumFiles(int n);
 
 private:
-    friend class GadgetSourceTest;
-    FRIEND_TEST(GadgetSourceTest, TestDetermineEndianism);
-    FRIEND_TEST(GadgetSourceTest, TestProcessFileName);
-    FRIEND_TEST(GadgetSourceTest, TestComputeFileStartPositions);
-    FRIEND_TEST(GadgetSourceTest, TestSetNumFiles);
-    FRIEND_TEST(GadgetSourceTest, TestComputeTypePositions);
-    FRIEND_TEST(GadgetSourceTest, TestIsValidParticleType);
-    FRIEND_TEST(GadgetSourceTest, TestReadHeader);
-    FRIEND_TEST(GadgetSourceTest, TestWriteChunkDataToMemoryTable);
-    FRIEND_TEST(GadgetSourceTest, TestReadDataMemory);
-    FRIEND_TEST(PointsPipeTest, TestMemVis);
-    FRIEND_TEST(PointsPipeTest, TestMemVisColor);
-
     std::vector<std::string> m_fieldsNames;
     unsigned int npart_total[6];
     int numFiles = 1;
