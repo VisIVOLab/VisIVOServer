@@ -6,8 +6,8 @@
 //
 //
 
-#ifndef COMMANDLINE_H
-#define COMMANDLINE_H
+#ifndef HISTORY_XML_WRITER_H
+#define HISTORY_XML_WRITER_H
 
 
 #include <string>

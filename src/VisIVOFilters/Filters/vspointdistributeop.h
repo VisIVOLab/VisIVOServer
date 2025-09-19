@@ -24,6 +24,13 @@
 /**
 	@author Ugo Becciani <ugo.becciani@oact.inaf.it>
 */
+
+struct GridHandle {
+    unsigned long long int totEle = 0;
+    unsigned long long startCounter = 0;
+    unsigned long long fromRow = 0;
+    unsigned long long toRow = 0;
+};
 class VSPointDistributeOp: public VSTableOp
 
 {  
@@ -51,16 +58,41 @@ class VSPointDistributeOp: public VSTableOp
   bool m_ngp;
   bool setOrigin();
   bool setSpacing();
+  unsigned long long int m_gridPts;
   bool m_OriginSet;
   bool m_SpacingSet;
   bool m_gridSpacing;
   bool m_avg;
+  bool m_periodic;
+  GridHandle gridHandle;
 
   bool allocateArray(int nField);
   bool allocateArray(int nField, bool isMP);
   bool computeModelBounds();
+  int parsePointColumns(unsigned int colList[3]) ;
+  void setAlgorithm();
+  bool setGridResolution();
+  bool parseFieldList(std::vector<int>& fieldList);
+  bool allocateColumnList(unsigned int*& colList, const std::vector<int>& fieldList);
+  bool initializeGrid(const std::vector<int>& fieldList, unsigned int* colList);
+  bool processGridSpacing();
+  std::string generateOutputFileName();
+  void configureTableGrid(VSTable& tableGrid, const std::vector<int>& fieldList);
+  bool initializeEmptyGrid(VSTable& tableGrid, const std::vector<int>& fieldList, unsigned int*& gridList);
+  void computeCICWeights(float pos1, float pos2, float pos3, float weights[8]);
+  bool processCIC(VSTable& tableGrid, unsigned int* gridList, int nOfField, 
+                    std::vector<int>& fieldList, unsigned long long* gridIndex);
+  void applyPeriodicBoundary_CIC(int& i1, int& i2, int& i3, int& i11, int& i21, int& i31);
+  void applyPeriodicBoundary_TSC(float px[3]);
+  int getLinearizedIndex(int x, int y, int z);
+  float computeTSCWeight(float posX, float posY, float posZ, int gridX, int gridY, int gridZ);
+  void processTSC(VSTable& tableGrid, unsigned int* gridList, int nOfField,
+                  std::vector<int>& fieldList, unsigned long long* gridIndex);
+  void computeNGPIndex(float px[3], int gridPos[3]);  
+  void processNGP(VSTable& tableGrid, unsigned int* gridList, int nOfField,
+                  std::vector<int>& fieldList, unsigned long long* gridIndex);
 
-public:
+    public:
     VSPointDistributeOp();
     ~VSPointDistributeOp();
     void printHelp();

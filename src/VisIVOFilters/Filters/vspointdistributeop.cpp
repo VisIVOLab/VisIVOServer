@@ -376,180 +376,585 @@ bool VSPointDistributeOp::setSpacing()
 }
 //---------------------------------------------------------------------
 
+int VSPointDistributeOp::parsePointColumns(unsigned int colList[3]) {
+    std::stringstream ss(getParameterAsString("points"));
+    std::string paramField;
+    int counterCols = 0;
+
+    while (ss >> paramField) {  
+        int colId = m_tables[0]->getColId(paramField);
+        if (colId >= 0) {
+            colList[counterCols] = static_cast<unsigned int>(colId);
+            counterCols++;
+            if (counterCols == 3) break;  // Stop after finding 3 valid columns
+        }
+    }
+
+    return counterCols;  // Return the number of valid columns found
+}
+
+void VSPointDistributeOp::setAlgorithm() {
+
+    if (isParameterPresent("tsc")) {
+        m_tsc = true;
+        m_cic = false;
+        m_ngp = false;
+    }
+    if (isParameterPresent("ngp")) {
+        if (m_tsc) {
+            std::cerr << "Ignored --tsc parameter because --ngp was also specified." << std::endl;
+        }
+        m_cic = false;
+        m_tsc = false;
+        m_ngp = true;
+    }
+    if (m_avg) {
+        // Force NGP when averaging
+        m_tsc = false;
+        m_cic = false;
+        m_ngp = true;
+    }
+}
+bool VSPointDistributeOp::setGridResolution() {
+    std::stringstream ssResolution(getParameterAsString("resolution"));
+    int parsedDimensions = 0;
+
+    while (ssResolution >> m_sampleDimensions[parsedDimensions]) {
+        if (m_sampleDimensions[parsedDimensions] <= 0) {
+            std::cerr << "VSPointDistributeOp: Invalid resolution value given: " 
+                      << m_sampleDimensions[parsedDimensions] << std::endl;
+            return false;
+        }
+        parsedDimensions++;
+        if (parsedDimensions == 3) break;  // Stop at 3 dimensions
+    }
+
+    if (parsedDimensions < 3) {
+        std::cerr << "VSPointDistributeOp: Invalid resolution—must provide exactly 3 values." << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool VSPointDistributeOp::parseFieldList(std::vector<int>& fieldList) {
+    std::stringstream fieldNameSStream(getParameterAsString("field"));
+
+    if (fieldNameSStream.str().empty() || fieldNameSStream.str() == "unknown") {
+        m_useConstant = true;
+        fieldList.push_back(-1);
+        if (isParameterPresent("constant")) {
+            m_constValue = getParameterAsFloat("constant");
+        }
+    } else {
+        std::string paramField;
+        while (fieldNameSStream >> paramField) {
+            int colId = m_tables[0]->getColId(paramField);
+            if (colId >= 0) {
+                fieldList.push_back(colId);
+            }
+            if (m_avg) break;  // Only one field is needed if averaging
+        }
+    }
+
+    if (fieldList.empty()) {
+        std::cerr << "PointDistribute: Invalid field specified." << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+bool VSPointDistributeOp::allocateColumnList(unsigned int*& colList, const std::vector<int>& fieldList) {
+    m_nOfCol = m_useConstant ? 3 : 3 + fieldList.size();  // Adjust column count
+
+    try {
+        colList = new unsigned int[m_nOfCol];  // Allocate memory
+    } catch (std::bad_alloc&) {
+        std::cerr << "Failed array allocation. VSPointDistributeOp operation terminated." << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool VSPointDistributeOp::initializeGrid(const std::vector<int>& fieldList, unsigned int* colList) {
+    unsigned long long int totRows = m_tables[0]->getNumberOfRows();
+    int maxInt = getMaxNumberInt();
+
+    m_nOfRow = (totRows > maxInt) ? maxInt : totRows;
+
+    m_gridPts = m_sampleDimensions[0] * m_sampleDimensions[1] * m_sampleDimensions[2];
+    m_numNewPts = (m_gridPts > maxInt) ? maxInt : m_gridPts;
+
+    bool allocationArray = allocateArray((int) fieldList.size());
+
+    if (m_fArray == nullptr || m_grid == nullptr || !allocationArray) {
+        std::cerr << "Failed Array allocation. vspointdistribute Operation terminated" << std::endl;
+        delete[] colList;
+        return false;
+    }
+    return true;
+}
+
+bool VSPointDistributeOp::processGridSpacing() {
+    m_gridSpacing = true;
+    m_SpacingSet = true;
+
+    std::stringstream ssgridSpacing(getParameterAsString("gridSpacing"));
+    int counterCols = 0;
+
+    while (!ssgridSpacing.eof()) {
+        ssgridSpacing >> m_spacing[counterCols];
+
+        if (m_spacing[counterCols] <= 0.) {
+            std::cerr << "Invalid gridSpacing values. Pointdistribute Operation terminated" << std::endl;
+            return false;
+        }
+
+        counterCols++;
+        if (counterCols == 3) break;
+    }
+
+    return true;
+}
+
+std::string VSPointDistributeOp::generateOutputFileName() {
+    std::stringstream fileNameOutputSStream;
+    fileNameOutputSStream << getParameterAsString("out");
+
+    if (fileNameOutputSStream.str().empty() || fileNameOutputSStream.str() == "unknown") {
+        std::string filenameInputTable = m_tables[0]->getLocator();
+        int len = filenameInputTable.length();
+
+        // Generate timestamp
+        time_t rawtime;
+        struct tm* timeinfo;
+        char buffer[80];
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+        strftime(buffer, 80, "%Y%m%d%H%M", timeinfo);
+
+        // Create a default filename
+        fileNameOutputSStream.str("");
+        fileNameOutputSStream << filenameInputTable.substr(0, len - 4) << "_pointdistribute_" << buffer << ".bin";
+    }
+
+    std::string fileNameOutput = fileNameOutputSStream.str();
+    if (fileNameOutput.find(".bin") == std::string::npos) {
+        fileNameOutput.append(".bin");
+    }
+
+    return fileNameOutput;
+}
+
+void VSPointDistributeOp::configureTableGrid(VSTable& tableGrid, const std::vector<int>& fieldList) {
+    #ifdef VSBIGENDIAN
+    std::string endianism="big";
+#else
+    std::string endianism="little";
+#endif    
+    tableGrid.setEndiannes(endianism);
+    tableGrid.setType("float");
+
+    if (m_avg) {
+        std::stringstream fileNameColSStream;
+        if (m_useConstant)
+            fileNameColSStream << "Constant";
+        else
+            fileNameColSStream << m_tables[0]->getColName(fieldList[0]);
+
+        tableGrid.addCol("NumberOfElements");
+        tableGrid.addCol(fileNameColSStream.str() + "Sum");
+        tableGrid.addCol(fileNameColSStream.str() + "Avg");
+    } 
+    else if (m_useConstant) {
+        tableGrid.addCol("Constant");
+    } 
+    else {
+        for (int colId : fieldList)
+            tableGrid.addCol(m_tables[0]->getColName(colId));
+    }
+
+    // Set table dimensions
+    tableGrid.setNumberOfRows(m_gridPts);
+    tableGrid.setIsVolume(true);
+    tableGrid.setCellNumber(m_sampleDimensions[0], m_sampleDimensions[1], m_sampleDimensions[2]);
+
+    // Configure spacing
+    float spacing[3];
+    if (m_gridSpacing) {
+        spacing[0] = m_spacing[0];
+        spacing[1] = m_spacing[1];
+        spacing[2] = m_spacing[2];
+    } else {
+        spacing[0] = 1.0;
+        spacing[1] = m_spacing[1] / m_spacing[0];
+        spacing[2] = m_spacing[2] / m_spacing[0];
+    }
+    tableGrid.setCellSize(spacing[0], spacing[1], spacing[2]);
+
+    // Write header to the table
+    tableGrid.writeHeader();
+}
+
+bool VSPointDistributeOp::initializeEmptyGrid(VSTable& tableGrid, const std::vector<int>& fieldList, unsigned int*& gridList) {
+    // Allocate grid list
+    int numOfField = fieldList.size();
+    if (m_avg) numOfField = 3;  // Override field count in case of averaging
+
+    try {
+        gridList = new unsigned int[numOfField];
+    } catch (std::bad_alloc&) {
+        std::cerr << "Memory allocation failed for gridList." << std::endl;
+        return false;
+    }
+
+    // Initialize gridList and zero-fill m_grid
+    for (int k = 0; k < numOfField; k++) {
+        gridList[k] = k;
+        for (unsigned int i = 0; i < m_numNewPts; i++)
+            m_grid[k][i] = 0.0;
+    }
+
+    // Fill the table with zeros
+    gridHandle.totEle = m_gridPts;
+
+    while (gridHandle.totEle > 0) {
+        gridHandle.fromRow = gridHandle.startCounter;
+        gridHandle.toRow = std::min(gridHandle.fromRow + m_numNewPts - 1, m_gridPts - 1);
+
+        tableGrid.putColumn(gridList, numOfField, gridHandle.fromRow, gridHandle.toRow, m_grid);
+
+        gridHandle.totEle -= (gridHandle.toRow - gridHandle.fromRow + 1);
+        gridHandle.startCounter = gridHandle.toRow + 1;
+    }
+
+    return true;
+}
+
+void VSPointDistributeOp::applyPeriodicBoundary_CIC(int& i1, int& i2, int& i3, int& i11, int& i21, int& i31) {
+    if (!m_periodic) return;
+
+    auto applyWrap = [](int& val, int maxVal) {
+        if (val < 0) val += maxVal;
+        if (val >= maxVal) val -= maxVal;
+    };
+
+    applyWrap(i1, m_sampleDimensions[0]);
+    applyWrap(i2, m_sampleDimensions[1]);
+    applyWrap(i3, m_sampleDimensions[2]);
+    applyWrap(i11, m_sampleDimensions[0]);
+    applyWrap(i21, m_sampleDimensions[1]);
+    applyWrap(i31, m_sampleDimensions[2]);
+}
+
+bool VSPointDistributeOp::processCIC(VSTable& tableGrid, unsigned int* gridList, int nOfField, 
+                                     std::vector<int>& fieldList, unsigned long long* gridIndex) {
+    float wc = 0.0;
+    int nCell = m_sampleDimensions[0] * m_sampleDimensions[1] * m_sampleDimensions[2];
+    int jkFactor = m_sampleDimensions[0]*m_sampleDimensions[1];
+    int jFactor = m_sampleDimensions[0];
+    float cellVolume=m_spacing[0]*m_spacing[1]*m_spacing[2];
+    float norm;
+    for (int ptId = 0; ptId < gridHandle.toRow - gridHandle.fromRow + 1; ptId++) {
+        wc = 0.0;
+        float px[3] = { m_fArray[0][ptId], m_fArray[1][ptId], m_fArray[2][ptId] };
+
+        float pos1 = (px[0] - m_origin[0]) / m_spacing[0];
+        float pos2 = (px[1] - m_origin[1]) / m_spacing[1];
+        float pos3 = (px[2] - m_origin[2]) / m_spacing[2];
+
+        int i1 = floor(pos1);
+        int i2 = floor(pos2);
+        int i3 = floor(pos3);
+        int i11 = i1 + 1;
+        int i21 = i2 + 1;
+        int i31 = i3 + 1;
+
+        applyPeriodicBoundary_CIC(i1, i2, i3, i11, i21, i31);
+
+        // Compute CIC Weights
+        float weights[8];
+        computeCICWeights(pos1, pos2, pos3, weights);
+
+        // Linearize coordinates
+        unsigned long long int ind[8] = {
+            i3 * jkFactor + i2 * jFactor + i1,
+            i3 * jkFactor + i2 * jFactor + i11,
+            i3 * jkFactor + i21 * jFactor + i1,
+            i3 * jkFactor + i21 * jFactor + i11,
+            i31 * jkFactor + i2 * jFactor + i1,
+            i31 * jkFactor + i2 * jFactor + i11,
+            i31 * jkFactor + i21 * jFactor + i1,
+            i31 * jkFactor + i21 * jFactor + i11
+        };
+
+        // Process density assignment
+        for (int n = 0; n < 8; n++) {
+            if (ind[n] < 0 || ind[n] >= nCell) continue;
+
+            if (ind[n] < gridIndex[0] || ind[n] > gridIndex[1]) { // Not in cache
+                tableGrid.putColumn(gridList, nOfField, gridIndex[0], gridIndex[1], m_grid);
+                gridIndex[0] = ind[n];
+                gridIndex[1] = gridIndex[0] + m_numNewPts - 1;
+                if (gridIndex[1] >= m_gridPts) gridIndex[1] = m_gridPts - 1;
+                tableGrid.getColumn(gridList, tableGrid.getNumberOfColumns(), gridIndex[0], gridIndex[1], m_grid);
+            }
+
+            for(int j=0;j<fieldList.size();j++)
+                    {
+                        if(m_useConstant)
+                            norm=m_constValue;
+                        else
+                            norm=m_fArray[3+j][ptId];
+                        m_grid[j][ind[n]-gridIndex[0]]+=weights[n]*norm/cellVolume;
+                        wc+=weights[n]*norm;
+                        //		outpippo<<"ptId="<<ptId<<" GRID j="<<j<<" i="<<ind[n]-gridIndex[0] <<" curr val="<<d[n]*norm<<" acc="<<m_grid[j][ind[n]-gridIndex[0]]<<std::endl; //AA
+                    }
+        }
+
+        // Error check
+        if (wc > 1.1 * norm * fieldList.size()) {
+            std::cerr << "Error 2 on CIC schema. Operation Aborted" << std::endl;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void VSPointDistributeOp::applyPeriodicBoundary_TSC(float px[3]) {
+    if (!m_periodic) return;
+
+    for (int i = 0; i < 3; i++) {
+        if (px[i] < 0) px[i] += m_sampleDimensions[i] * m_spacing[i];
+        if (px[i] >= (m_sampleDimensions[i] * m_spacing[i])) px[i] -= m_sampleDimensions[i] * m_spacing[i];
+    }
+}
+
+int VSPointDistributeOp::getLinearizedIndex(int x, int y, int z) {
+    if (m_periodic) {
+        x = (x + m_sampleDimensions[0]) % m_sampleDimensions[0];
+        y = (y + m_sampleDimensions[1]) % m_sampleDimensions[1];
+        z = (z + m_sampleDimensions[2]) % m_sampleDimensions[2];
+    }
+    if (x < 0 || x >= m_sampleDimensions[0] || y < 0 || y >= m_sampleDimensions[1] || z < 0 || z >= m_sampleDimensions[2])
+        return -1;
+
+    return x + m_sampleDimensions[0] * y + m_sampleDimensions[0] * m_sampleDimensions[1] * z;
+}
+
+void VSPointDistributeOp::computeCICWeights(float pos1, float pos2, float pos3, float weights[8]) {
+    float dd1 = pos1 - floor(pos1);
+    float dd2 = pos2 - floor(pos2);
+    float dd3 = pos3 - floor(pos3);
+
+    float de1 = 1.0 - dd1;
+    float de2 = 1.0 - dd2;
+    float de3 = 1.0 - dd3;
+
+    weights[0] = de1 * de2 * de3;
+    weights[1] = dd1 * de2 * de3;
+    weights[2] = de1 * dd2 * de3;
+    weights[3] = dd1 * dd2 * de3;
+    weights[4] = de1 * de2 * dd3;
+    weights[5] = dd1 * de2 * dd3;
+    weights[6] = de1 * dd2 * dd3;
+    weights[7] = dd1 * dd2 * dd3;
+}
+
+float VSPointDistributeOp::computeTSCWeight(float posX, float posY, float posZ, int gridX, int gridY, int gridZ) {
+    float dist_x = fabs((posX / m_spacing[0]) - gridX);
+    float dist_y = fabs((posY / m_spacing[1]) - gridY);
+    float dist_z = fabs((posZ / m_spacing[2]) - gridZ);
+
+    float w_x = (dist_x <= .5) ? (0.75 - dist_x * dist_x) : (dist_x <= 1.5 ? 0.5 * (1.5 - dist_x) * (1.5 - dist_x) : 0);
+    float w_y = (dist_y <= .5) ? (0.75 - dist_y * dist_y) : (dist_y <= 1.5 ? 0.5 * (1.5 - dist_y) * (1.5 - dist_y) : 0);
+    float w_z = (dist_z <= .5) ? (0.75 - dist_z * dist_z) : (dist_z <= 1.5 ? 0.5 * (1.5 - dist_z) * (1.5 - dist_z) : 0);
+
+    return w_x * w_y * w_z;
+}
+
+void VSPointDistributeOp::processTSC(VSTable& tableGrid, unsigned int* gridList, int nOfField,
+                                     std::vector<int>& fieldList, unsigned long long* gridIndex) {
+    float wc = 0;
+
+    float cellVolume=m_spacing[0]*m_spacing[1]*m_spacing[2];
+    int nCell = m_sampleDimensions[0] * m_sampleDimensions[1] * m_sampleDimensions[2];
+
+    for (int ptId = 0; ptId < gridHandle.toRow - gridHandle.fromRow + 1; ptId++) {
+        float px[3] = {
+            m_fArray[0][ptId] - m_origin[0],
+            m_fArray[1][ptId] - m_origin[1],
+            m_fArray[2][ptId] - m_origin[2]
+        };
+
+        applyPeriodicBoundary_TSC(px);
+
+        int ind_x = (int)floor(px[0] / m_spacing[0]);
+        int ind_y = (int)floor(px[1] / m_spacing[1]);
+        int ind_z = (int)floor(px[2] / m_spacing[2]);
+
+        wc = 0.;
+        int xList[4], yList[4], zList[4];
+
+        for (int j = 0; j < 4; j++) {
+            xList[j] = ind_x + j - 1;
+            yList[j] = ind_y + j - 1;
+            zList[j] = ind_z + j - 1;
+        }
+
+        for (int ix = 0; ix < 4; ix++) {
+            for (int iy = 0; iy < 4; iy++) {
+                for (int iz = 0; iz < 4; iz++) {
+                    float w = computeTSCWeight(px[0], px[1], px[2], xList[ix], yList[iy], zList[iz]);
+                    if (w == 0) continue;
+
+                    int ind_test = getLinearizedIndex(xList[ix], yList[iy], zList[iz]);
+                    if (ind_test < 0 || ind_test >= nCell) continue;
+
+                    if (ind_test < gridIndex[0] || ind_test > gridIndex[1]) {
+                        tableGrid.putColumn(gridList, nOfField, gridIndex[0],gridIndex[1],m_grid);
+                        gridIndex[0]=ind_test;
+                        gridIndex[1]=gridIndex[0]+m_numNewPts-1;
+                        if(gridIndex[1]>=m_gridPts)gridIndex[1]=m_gridPts-1;
+                        tableGrid.getColumn(gridList,nOfField,gridIndex[0],gridIndex[1],m_grid);
+                    }
+
+                    for (int j = 0; j < fieldList.size(); j++) {
+                        float norm = m_useConstant ? m_constValue : m_fArray[3 + j][ptId];
+                        m_grid[j][ind_test - gridIndex[0]] += w * norm / cellVolume;
+                        wc += w * norm;
+                    }
+                }
+            }
+        }
+
+        if (wc > 1.1) {
+            std::cerr << "Error in TSC schema. Operation Aborted." << std::endl;
+            return;
+        }
+    }
+}
+
+void VSPointDistributeOp::computeNGPIndex(float px[3], int gridPos[3]) {
+    float pos[3] = {
+        (px[0] - m_origin[0]) / m_spacing[0],
+        (px[1] - m_origin[1]) / m_spacing[1],
+        (px[2] - m_origin[2]) / m_spacing[2]
+    };
+
+    for (int i = 0; i < 3; i++) {
+        gridPos[i] = floor(pos[i]);
+        if (fabs(pos[i] - gridPos[i]) > 0.5) gridPos[i]++;
+
+        if (m_periodic) {
+            if (gridPos[i] < 0) gridPos[i] += m_sampleDimensions[i];
+            if (gridPos[i] >= m_sampleDimensions[i]) gridPos[i] -= m_sampleDimensions[i];
+        }
+    }
+}
+
+void VSPointDistributeOp::processNGP(VSTable& tableGrid, unsigned int* gridList, int nOfField,
+                                     std::vector<int>& fieldList, unsigned long long* gridIndex) {
+    int nCell = m_sampleDimensions[0] * m_sampleDimensions[1] * m_sampleDimensions[2];
+    float cellVolume=m_spacing[0]*m_spacing[1]*m_spacing[2];
+    int jkFactor = m_sampleDimensions[0]*m_sampleDimensions[1];
+    int jFactor = m_sampleDimensions[0];
+    for (int ptId = 0; ptId < gridHandle.toRow - gridHandle.fromRow + 1; ptId++) {
+        float px[3] = {
+            m_fArray[0][ptId],
+            m_fArray[1][ptId],
+            m_fArray[2][ptId]
+        };
+
+        int gridPos[3];
+        computeNGPIndex(px, gridPos);
+
+        if (gridPos[0] < 0 || gridPos[0] >= m_sampleDimensions[0] ||
+            gridPos[1] < 0 || gridPos[1] >= m_sampleDimensions[1] ||
+            gridPos[2] < 0 || gridPos[2] >= m_sampleDimensions[2])
+            continue;
+
+        int ind = gridPos[2] * jkFactor + gridPos[1] * jFactor + gridPos[0];
+
+        if (ind >= nCell) continue;
+
+        if (ind < gridIndex[0] || ind > gridIndex[1]) { // Grid index out of cache
+            tableGrid.putColumn(gridList, nOfField, gridIndex[0],gridIndex[1],m_grid); //QUI controlla:estremi INCLUSI
+            gridIndex[0]=ind;
+            gridIndex[1]=gridIndex[0]+m_numNewPts-1;
+            if(gridIndex[1]>=m_gridPts)gridIndex[1]=m_gridPts-1;
+            tableGrid.getColumn(gridList, tableGrid.getNumberOfColumns(),gridIndex[0],gridIndex[1],m_grid);
+        }
+
+        for (int j = 0; j < fieldList.size(); j++) {
+            float norm = m_useConstant ? m_constValue : m_fArray[3 + j][ptId];
+
+            if (m_avg) {
+                m_grid[0][ind - gridIndex[0]] += 1.0;
+                m_grid[1][ind - gridIndex[0]] += norm;
+                m_grid[2][ind - gridIndex[0]] = m_grid[1][ind - gridIndex[0]] / m_grid[0][ind - gridIndex[0]];
+            } else {
+                m_grid[j][ind - gridIndex[0]] += norm / cellVolume;
+            }
+        }
+    }
+}
+
 //---------------------------------------------------------------------
 bool VSPointDistributeOp::execute()
 //---------------------------------------------------------------------
 {
-    if(isParameterPresent("avg"))
-        m_avg=true;
-    bool periodic=false;
-    if(isParameterPresent("periodic"))
-        periodic=true;
+    m_avg=isParameterPresent("avg");
+    m_periodic=isParameterPresent("periodic");
     VSTable tableGrid;
     std::vector<int> fieldList;
     // check for points  coordinate columns
-    unsigned long long int counterCols=0;
-    std::stringstream ssListparameters;
-    ssListparameters.str(getParameterAsString("points"));
-    while (!ssListparameters.eof())
-    {
-        std::string paramField;
-        ssListparameters>>paramField;
-        if(m_tables[0] -> getColId(paramField)>=0)
-        {
-            m_colList[counterCols]=m_tables[0] -> getColId(paramField);
-            counterCols++;
-            if(counterCols==3)
-                break;
-        }
-    }
-    if(counterCols !=3)
-    {
-        std::cerr<<"VSPointDistributeOp: Invalid columns in --points argument is given"<<std::endl;
+    unsigned int colLs[3];  // Fixed-size array
+    unsigned long long int totRows = m_tables[0]->getNumberOfRows();
+    int counterCols = parsePointColumns(colLs);
+
+    if (counterCols != 3) {
+        std::cerr << "VSPointDistributeOp: Invalid columns in --points argument" << std::endl;
         return false;
     }
-    // check for TSC
-    if(isParameterPresent("tsc"))
-    {
-        m_tsc=true;
-        m_ngp=false;
-        m_cic=false;
-    }
-    if(isParameterPresent("ngp"))
-    {
-        if(m_tsc)
-            std::cerr<<"Ignored --tsc parameter"<<std::endl;
-        m_tsc=false;
-        m_cic=false;
-        m_ngp=true;
-    }
-    if(m_avg)	// force ngp
-    {
-        m_tsc=false;
-        m_cic=false;
-        m_ngp=true;
-    }
+
+    std::memcpy(m_colList, colLs, 3 * sizeof(unsigned int));  // Assign parsed columns
+
+    setAlgorithm();
     
     //check grid resolution
     
-    counterCols =0;
-    ssListparameters.clear();
-    ssListparameters.str(getParameterAsString("resolution"));
-    while (!ssListparameters.eof())
-    {
-        std::string paramField;
-        ssListparameters>>paramField;
-        m_sampleDimensions[counterCols]=atoi(paramField.c_str()); //set resolution
-        if(m_sampleDimensions[counterCols]<=0)
-        {
-            std::cerr<<"VSPointDistributeOp: Invalid resolution is given"<<std::endl;
-            return false;
-        }
-        counterCols++;
-        if(counterCols==3)
-            break;
-    }
-    
-    if(counterCols<3)
-    {
-        std::cerr<<"VSPointDistributeOp: Invalid resolution is given"<<std::endl;
+    if (!setGridResolution()) {
         return false;
     }
-    std::stringstream fieldNameSStream;
-    fieldNameSStream<<getParameterAsString("field");
-    if(fieldNameSStream.str()==""||fieldNameSStream.str()=="unknown")
-    {
-        m_useConstant=true;
-        fieldList.push_back(-1);
-        if(isParameterPresent("constant"))
-            m_constValue=getParameterAsFloat("constant");
-    }else
-    {
-        while (!fieldNameSStream.eof())
-        {
-            std::string paramField;
-            fieldNameSStream>>paramField;
-            if(m_tables[0] -> getColId(paramField)>=0)
-                fieldList.push_back(m_tables[0] -> getColId(paramField));
-            if(m_avg) break;
-        }
-    }
-    if(fieldList.size()<=0)
-    {
-        std::cerr<<"Pointdistribute. Invalid field is given"<<std::endl;
+    
+    if (!parseFieldList(fieldList)) {
         return false;
     }
-    //prepare colList: list of columns to be read
-    unsigned int *colList;
-    unsigned int nOfField= fieldList.size();
-    m_nOfCol=3+nOfField;
-    if(m_useConstant) m_nOfCol=3;
-    try
-    {
-        colList= new unsigned int[m_nOfCol];
-    }
-    catch(std::bad_alloc &e)
-    {
-        colList=NULL;
-    }
-    
-    if(colList==NULL)
-    {
-        std::cerr<<"Failed Array allocation. vspointdistribute Operation terminated"<<std::endl;
+
+    // Prepare colList: list of columns to be read
+    unsigned int nOfField = fieldList.size();
+    unsigned int* colList = nullptr;
+    if (!allocateColumnList(colList, fieldList)) {
         return false;
     }
     
     // allocate m_arrays
+    if (!initializeGrid(fieldList, colList)) return false;
     
-    unsigned long long int totRows=m_tables[0]->getNumberOfRows();
-    int maxInt=getMaxNumberInt();
-    
-    if(totRows>maxInt)
-        m_nOfRow=maxInt;
-    else
-        m_nOfRow=totRows;
-    
-    unsigned long long int gridPts = m_sampleDimensions[0] * m_sampleDimensions[1] * m_sampleDimensions[2];
-    if(gridPts>maxInt)
-        m_numNewPts=maxInt;
-    else
-        m_numNewPts=gridPts;
-    
-    bool allocationArray=allocateArray((int) fieldList.size());
-    
-    
-    if(m_fArray==NULL || m_grid==NULL || !allocationArray )
-    {
-        std::cerr<<"Failed Array allocation. vspointdistribute Operation terminated"<<std::endl;
-        delete [] colList;
-        return false;
-    }
-    
-    
-    
+    //Parameters Setting: gridOrigin
     if(isParameterPresent("gridOrigin"))
         m_OriginSet=setOrigin();
+    //Parameters Setting: box
     if(isParameterPresent("box"))
         m_SpacingSet=setSpacing();
+    //Parameters Setting: gridSpacing
     if(isParameterPresent("gridSpacing") && !m_SpacingSet)
     {
-        m_gridSpacing=true;
-        m_SpacingSet=true;
-        std::stringstream ssgridSpacing;
-        ssgridSpacing.str(getParameterAsString("gridSpacing"));
-        counterCols=0;
-        while (!ssgridSpacing.eof())
-        {
-            ssgridSpacing>>m_spacing[counterCols];
-            if(m_spacing[counterCols]<=0.)
-            {
-                std::cerr<<"Invalid gridSpacing values .Pointdistribute Operation terminated"<<std::endl;
-                delete [] colList;
-                return false;
-            }
-            counterCols++;
-            if(counterCols==3)
-                break;
+        if (!processGridSpacing()) {
+            delete[] colList;
+            return false;
         }
     }
     if(!m_SpacingSet || !m_OriginSet)
@@ -558,117 +963,23 @@ bool VSPointDistributeOp::execute()
             delete [] colList;
             return false;
         }
+
     // initialize the grid
     //open file output
-    std::stringstream fileNameOutputSStream;
-    fileNameOutputSStream<<getParameterAsString("out");
-    std::string fileNameOutput;
-    if(fileNameOutputSStream.str()==""||fileNameOutputSStream.str()=="unknown")
-    {
-        fileNameOutputSStream.str().erase(); //QUI verificare
-        std::string filenameInputTable=m_tables[0]->getLocator();
-        int len=filenameInputTable.length();
-        time_t rawtime;
-        struct tm * timeinfo;
-        char buffer [80];
-        time ( &rawtime );
-        timeinfo = localtime ( &rawtime );
-        strftime (buffer,80,"%Y%m%d%H%M",timeinfo);
-        fileNameOutputSStream<<filenameInputTable.substr(0, len-4)<<"_pointdistribute_"<<buffer<<".bin";  //QUI verificare
-    }
-    
-    fileNameOutput=fileNameOutputSStream.str();
-    if(fileNameOutput.find(".bin") == std::string::npos)
-   		fileNameOutput.append(".bin");
+    std::string fileNameOutput = generateOutputFileName();
     m_realOutFilename.push_back(fileNameOutput);
-    
-    //Clean existing tab
+
+    // Clean existing tab
     remove(fileNameOutput.c_str());
     tableGrid.setLocator(fileNameOutput);
-#ifdef VSBIGENDIAN
-    std::string endianism="big";
-#else
-    std::string endianism="little";
-#endif
     
-    tableGrid.setEndiannes(endianism);
-    tableGrid.setType("float");
-    if(m_avg)
-    {
-        std::stringstream fileNameColSStream;
-        if(m_useConstant)
-            fileNameColSStream<<"Constant";
-        else
-            fileNameColSStream<<m_tables[0] -> getColName(fieldList[0]);
-        tableGrid.addCol("NumberOfElements");
-        std::string avgColName=fileNameColSStream.str()+"Avg";
-        std::string sumColName=fileNameColSStream.str()+"Sum";
-        tableGrid.addCol(sumColName);
-        tableGrid.addCol(avgColName);
-    }
-    else if(m_useConstant)
-        tableGrid.addCol("Constant");
-    else
-        for(int i=0;i<fieldList.size();i++)
-            tableGrid.addCol(m_tables[0] -> getColName(fieldList[i]));
-    
-    tableGrid.setNumberOfRows(gridPts);
-    tableGrid.setIsVolume(true);
-    tableGrid.setCellNumber(m_sampleDimensions[0],m_sampleDimensions[1],m_sampleDimensions[2]);
-    float spacing[3];
-    if(m_gridSpacing)
-    {
-        spacing[0]=m_spacing[0];
-        spacing[1]=m_spacing[1];
-        spacing[2]=m_spacing[2];
-        
-    } else{
-        spacing[0]=1.0;
-        spacing[1]=m_spacing[1]/m_spacing[0];
-        spacing[2]=m_spacing[2]/m_spacing[0];
-    }
-    tableGrid.setCellSize(spacing[0],spacing[1],spacing[2]); //fixed cellSize QUI could be modified
-    tableGrid.writeHeader();
+    configureTableGrid(tableGrid, fieldList);
     
     //  Create Empty Binary File
-    // use only the first col of m_grid for comodity
-    int tmp=(int) fieldList.size();
-    unsigned int *gridList ;
-    try {
-        gridList = new unsigned int[tmp];
-    }
-    catch(std::bad_alloc &e)
-    {
-        gridList=NULL;
-    }
-    if (gridList==NULL)
-    {
-        delete [] colList;
+    unsigned int* gridList = nullptr;
+    if (!initializeEmptyGrid(tableGrid, fieldList, gridList)) {
+        delete[] colList;
         return false;
-    }
-    int numOfField=fieldList.size();
-    if(m_avg) numOfField=3;
-	
-    for(int k=0;k<numOfField;k++)
-    {
-        gridList[k]=k;
-        for(unsigned int i=0;i<(unsigned int) m_numNewPts;i++)
-            m_grid[k][i]=0.0;
-    }
-    // fill the table with zero
-    
-    unsigned long long int startCounter=0;
-    unsigned long long int fromRow,toRow;
-    unsigned long long int totEle= gridPts;
-    while(totEle!=0)
-    {
-        fromRow=startCounter;
-        toRow=fromRow+m_numNewPts-1;
-        if(toRow>gridPts-1)toRow=gridPts-1;
-        tableGrid.putColumn(gridList, nOfField, fromRow,toRow,m_grid);
-        totEle=totEle-(toRow-fromRow+1);
-        startCounter=toRow+1;
-        if(totEle<0) totEle=0;
     }
     
     //////////////////////
@@ -680,8 +991,8 @@ bool VSPointDistributeOp::execute()
     unsigned long long int gridIndex[2];  //limits of cashed grid
     gridIndex[0]=0;
     gridIndex[1]=m_numNewPts-1;
-    totEle=totRows;
-    startCounter=0;
+    gridHandle.totEle=totRows;
+    gridHandle.startCounter=0;
     colList[0]=m_colList[0];
     colList[1]=m_colList[1];
     colList[2]=m_colList[2];
@@ -689,8 +1000,8 @@ bool VSPointDistributeOp::execute()
         for(int i=0;i<nOfField;i++)
             colList[3+i]=fieldList[i];
     
-    unsigned long long int jkFactor = m_sampleDimensions[0]*m_sampleDimensions[1];
-    unsigned long long int jFactor = m_sampleDimensions[0];
+    int jkFactor = m_sampleDimensions[0]*m_sampleDimensions[1];
+    int jFactor = m_sampleDimensions[0];
     float norm;
     
     
@@ -698,376 +1009,38 @@ bool VSPointDistributeOp::execute()
     if(isParameterPresent("nodensity") || m_avg)
         cellVolume=1.0;
     
-    while(totEle!=0)
+    while(gridHandle.totEle!=0)
     {
-        // Table douwnLoad
-        fromRow=startCounter;
-        toRow=fromRow+m_nOfRow-1;
-        if(toRow>totRows-1)
-            toRow=totRows-1;
-        m_tables[0]->getColumn(colList,m_nOfCol, fromRow, toRow, m_fArray);
+        // Table downLoad
+        gridHandle.fromRow=gridHandle.startCounter;
+        gridHandle.toRow=gridHandle.fromRow+m_nOfRow-1;
+        if(gridHandle.toRow>totRows-1)
+            gridHandle.toRow=totRows-1;
+        m_tables[0]->getColumn(colList,m_nOfCol, gridHandle.fromRow,gridHandle. toRow, m_fArray);
         
-        if(m_ngp)
-        {
-            int ind;
-            int nCell=m_sampleDimensions[0]*m_sampleDimensions[1]*m_sampleDimensions[2];
-            // NGP on points
-            for (int ptId=0; ptId < toRow-fromRow+1; ptId++)
-            {
-                float px[3];
-                px[0]=m_fArray[0][ptId];
-                px[1]=m_fArray[1][ptId];
-                px[2]=m_fArray[2][ptId];
-                
-                float pos1 = (float) (px[0] - m_origin[0]) / m_spacing[0];
-                float pos2 = (float) (px[1] - m_origin[1]) / m_spacing[1];
-                float pos3 = (float) (px[2] - m_origin[2]) / m_spacing[2];
-                
-                // find nearest grid points
-                int i1 = floor(pos1);
-                if(fabs((pos1-i1))>0.5)
-                    i1++;
-                int i2 = floor(pos2);
-                if(fabs((pos2-i2))>0.5)
-                    i2++;
-                int i3 = floor(pos3);
-                if(fabs((pos3-i3))>0.5)
-                    i3++;
-                if(periodic)
-                {
-                    
-                    if(i1<0)
-                        i1=m_sampleDimensions[0]+i1;
-                    if(i2<0)
-                        i2=m_sampleDimensions[1]+i2;
-                    if(i3<0)
-                        i3=m_sampleDimensions[2]+i3;
-                    if(i1>m_sampleDimensions[0]-1)
-                        i1=i1-m_sampleDimensions[0];
-                    if(i2>m_sampleDimensions[1]-1)
-                        i2=i2-m_sampleDimensions[1];
-                    if(i3>m_sampleDimensions[2]-1)
-                        i3=i3-m_sampleDimensions[2];
-                }
-                if (i1 <m_sampleDimensions[0] && i1 >= 0 && i2 < m_sampleDimensions[1] && i2 >= 0 && i3 < m_sampleDimensions[2] && i3 >= 0)
-                {
-               		ind = i3*jkFactor + i2*jFactor + i1;
-                    if(ind>nCell-1) continue;
-                    
-                    // calculate density
-                    
-                    if(ind<gridIndex[0] || ind>gridIndex[1]) //ind1 NOT in cache!
-                    {
-                        tableGrid.putColumn(gridList, nOfField, gridIndex[0],gridIndex[1],m_grid); //QUI controlla:estremi INCLUSI
-                        gridIndex[0]=ind;
-                        gridIndex[1]=gridIndex[0]+m_numNewPts-1;
-                        if(gridIndex[1]>=gridPts)gridIndex[1]=gridPts-1;
-                        tableGrid.getColumn(gridList, tableGrid.getNumberOfColumns(),gridIndex[0],gridIndex[1],m_grid);
-                    }
-                    for(int j=0;j<fieldList.size();j++)//Note: fieldList.size() MUST be equal 1 if m_avg
-                    {
-                        if(m_useConstant)
-                            norm=m_constValue;
-                        else
-                            norm=m_fArray[3+j][ptId];
-                        if(m_avg)
-                        {
-                            m_grid[0][ind-gridIndex[0]]+=1.0;
-                            m_grid[1][ind-gridIndex[0]]+=norm;
-                            m_grid[2][ind-gridIndex[0]]=m_grid[1][ind-gridIndex[0]]/m_grid[0][ind-gridIndex[0]];
-                        }
-                        else
-                            m_grid[j][ind-gridIndex[0]]+=norm/cellVolume;
-                    }
-                } //if(pos...)
-                
-                // end main loop
-                
-            } //for(... ptId..)
-        } // close if ngp
+        if (m_ngp) {
+            processNGP(tableGrid, gridList, nOfField, fieldList, gridIndex);
+        }
         
-        if(m_cic)
-        {
-            float wc=0.;
-            unsigned long long int nCell=m_sampleDimensions[0]*m_sampleDimensions[1]*m_sampleDimensions[2];
-            // CIC on points
-            for (int ptId=0; ptId < toRow-fromRow+1; ptId++)
-            {
-                //		std::clog<<ptId<<std::endl;
-                wc=0.;
-                float px[3];
-                px[0]=m_fArray[0][ptId];
-                px[1]=m_fArray[1][ptId];
-                px[2]=m_fArray[2][ptId];
-                
-                float pos1 = (float) (px[0] - m_origin[0]) / m_spacing[0];
-                float pos2 = (float) (px[1] - m_origin[1]) / m_spacing[1];
-                float pos3 = (float) (px[2] - m_origin[2]) / m_spacing[2];
-                
-                int i1 = floor(pos1);
-                /*       		if(fabs((pos1-i1))>0.5)
-                 i1++;*/
-                int i2 = floor(pos2);
-                /*       		if(fabs((pos2-i2))>0.5)
-                 i2++;*/
-                int i3 = floor(pos3);
-                /*       		if(fabs((pos3-i3))>0.5)
-                 i3++;*/
-                int i11=i1+1;
-                int i21=i2+1;
-                int i31=i3+1;
-               	float dd1=pos1-(float)i1;
-               	float dd2=pos2-(float)i2;
-               	float dd3=pos3-(float)i3;
-               	float de1=1.0-dd1;
-               	float de2=1.0-dd2;
-               	float de3=1.0-dd3;
-                if(periodic)
-                {
-                    if(i1<0)
-                        i1=m_sampleDimensions[0]+i1;
-                    if(i2<0)
-                        i2=m_sampleDimensions[1]+i2;
-                    if(i3<0)
-                        i3=m_sampleDimensions[2]+i3;
-                    if(i1>m_sampleDimensions[0]-1)
-                        i1=i1-m_sampleDimensions[0];
-                    if(i2>m_sampleDimensions[1]-1)
-                        i2=i2-m_sampleDimensions[1];
-                    if(i3>m_sampleDimensions[2]-1)
-                        i3=i3-m_sampleDimensions[2];
-                    if(i11<0)
-                        i11=m_sampleDimensions[0]+i11;
-                    if(i21<0)
-                        i21=m_sampleDimensions[1]+i21;
-                    if(i31<0)
-                        i31=m_sampleDimensions[2]+i31;
-                    if(i11>m_sampleDimensions[0]-1)
-                        i11=i11-m_sampleDimensions[0];
-                    if(i21>m_sampleDimensions[1]-1)
-                        i21=i21-m_sampleDimensions[1];
-                    if(i31>m_sampleDimensions[2]-1)
-                        i31=i31-m_sampleDimensions[2];
-                }
-                
-                // calculate weights
-                float d[8];
-                d[0]= de1*de2*de3;
-                d[1]= dd1*de2*de3;
-                d[2]= de1*dd2*de3;
-                d[3]= dd1*dd2*de3;
-                d[4]= de1*de2*dd3;
-                d[5]= dd1*de2*dd3;
-                d[6]= de1*dd2*dd3;
-                d[7]= dd1*dd2*dd3;
-                
-                // linearize coordinates
-                unsigned long long int ind[8];
-                ind[0] = i3*jkFactor + i2*jFactor + i1;
-                ind[1] = i3*jkFactor + i2*jFactor + i11;
-                ind[2] = i3*jkFactor + i21*jFactor + i1;
-                ind[3] = i3*jkFactor + i21*jFactor + i11;
-                ind[4] = i31*jkFactor + i2*jFactor + i1;
-                ind[5] = i31*jkFactor + i2*jFactor + i11;
-                ind[6] = i31*jkFactor + i21*jFactor + i1;
-                ind[7] = i31*jkFactor + i21*jFactor + i11;
-                
-                
-                // calculate density
-                
-                for(int n=0;n<8;n++)
-                {
-                    if(ind[n]<0  || ind[n]>=nCell)
-                        continue;
-                    if(ind[n]<gridIndex[0] || ind[n]>gridIndex[1]) //ind1 NOT in cache!
-                    {
-                        tableGrid.putColumn(gridList, nOfField, gridIndex[0],gridIndex[1],m_grid); //QUI controlla:estremi INCLUSI
-                        gridIndex[0]=ind[n];
-                        gridIndex[1]=gridIndex[0]+m_numNewPts-1;
-                        if(gridIndex[1]>=gridPts)gridIndex[1]=gridPts-1;
-                        tableGrid.getColumn(gridList, tableGrid.getNumberOfColumns(),gridIndex[0],gridIndex[1],m_grid);
-                    }
-                    for(int j=0;j<fieldList.size();j++)
-                    {
-                        if(m_useConstant)
-                            norm=m_constValue;
-                        else
-                            norm=m_fArray[3+j][ptId];
-                        m_grid[j][ind[n]-gridIndex[0]]+=d[n]*norm/cellVolume;
-                        wc+=d[n]*norm;
-                        //		outpippo<<"ptId="<<ptId<<" GRID j="<<j<<" i="<<ind[n]-gridIndex[0] <<" curr val="<<d[n]*norm<<" acc="<<m_grid[j][ind[n]-gridIndex[0]]<<std::endl; //AA
-                    }
-                }
-                
-                // end main loop
-                if(wc>1.1*norm*fieldList.size())
-                {
-                    std::cerr<<"Error 2 on cic schema. Operation Aborted"<<std::endl;
-                    if(colList!=NULL) delete [] colList;
-                    if(gridList!=NULL)delete [] gridList;
-                    return false;
-                }
-                
-            } //for(... ptId..)
-        } // close if cic
-
-        if(m_tsc) //TSC
-        {
-            float wc=0;
-            int nCell=m_sampleDimensions[0]*m_sampleDimensions[1]*m_sampleDimensions[2];
-            for (int ptId=0; ptId < toRow-fromRow+1; ptId++)
-            {
-      	        float px[3];
-                int ind_x,ind_y,ind_z;
-                int xList[4],yList[4],zList[4];
-                /*		m_spacing[0]=70./128;
-                 m_spacing[1]=70./128;
-                 m_spacing[2]=70./128;*/
-                double node_x, node_y, node_z, dist_x, dist_y, dist_z, w_x, w_y, w_z, w;
-                
-                px[0]=m_fArray[0][ptId]-m_origin[0];
-                if(periodic && px[0]<0.) px[0]+=m_sampleDimensions[0]*m_spacing[0];
-                if(periodic && px[0]>=(m_sampleDimensions[0]*m_spacing[0])) px[0]-=m_sampleDimensions[0]*m_spacing[0];
-                
-                px[1]=m_fArray[1][ptId]-m_origin[1];
-                if(periodic && px[1]<0.) px[1]+=m_sampleDimensions[1]*m_spacing[1];
-                if(periodic && px[1]>=(m_sampleDimensions[1]*m_spacing[1])) px[1]-=m_sampleDimensions[1]*m_spacing[1];
-                
-                px[2]=m_fArray[2][ptId]-m_origin[2];
-                if(periodic && px[2]<0.) px[2]+=m_sampleDimensions[2]*m_spacing[2];
-                if(periodic && px[2]>=(m_sampleDimensions[2]*m_spacing[2])) px[2]-=m_sampleDimensions[2]*m_spacing[2];
-                ; 		
-                ind_x = (int)floor(px[0]/m_spacing[0]);
-                ind_y = (int)floor(px[1]/m_spacing[1]);
-                ind_z = (int)floor(px[2]/m_spacing[2]);
-                wc=0.;
-                for(int j=0;j<4;j++)
-                {
-                    xList[j]=ind_x+j-1;
-                    yList[j]=ind_y+j-1;    
-                    zList[j]=ind_z+j-1;
-                }
-                
-                for(int ix = 0; ix <4;ix++)
-                {
-                    //		    std::clog<<"ix= "<<ix<<" wc= "<<wc<<std::endl;
-                    for(int iy = 0; iy <4;iy++)
-                    {
-                        //			std::clog<<"iy= "<<iy<<" wc= "<<wc<<std::endl;
-                        for(int iz = 0; iz <4;iz++)
-                        {
-                            dist_x = px[0]/m_spacing[0] - xList[ix];
-                            dist_y = px[1]/m_spacing[1] - yList[iy];
-                            dist_z = px[2]/m_spacing[2] - zList[iz];
-                            if(dist_x<0) dist_x=-1*dist_x;
-                            if(dist_y<0) dist_y=-1*dist_y;
-                            if(dist_z<0) dist_z=-1*dist_z;
-                            
-                            if(dist_x <= .5)   w_x = .75 - dist_x*dist_x;
-                            else if (dist_x <= 1.5) w_x = .5*(1.5-dist_x)*(1.5-dist_x);
-                            else w_x = 0;
-                            
-                            if(dist_y <= .5)   w_y = .75 - dist_y*dist_y;
-                            else if (dist_y <= 1.5) w_y = .5*(1.5-dist_y)*(1.5-dist_y);
-                            else w_y = 0;
-                            
-                            if(dist_z <= .5)   w_z = .75 - dist_z*dist_z;
-                            else if (dist_z <= 1.5) w_z = .5*(1.5-dist_z)*(1.5-dist_z);
-                            else w_z = 0;                
-                            
-                            if( (w_x < 0. || w_y  < 0.) ||  w_z < 0.)
-                                std::cerr<<"WARNING: particle "<<ptId<<" xyzList "<<xList[ix]<<" "<< yList[iy]<<" "<<zList[iz]<<" AND w_x,y,z "<<w_x<<" "<<w_y<<" "<<w_z<<std::endl;
-                            
-                            w = w_x * w_y * w_z;
-                            //				std::clog<<"iz= "<<iz<<" wc= "<<wc<<" w="<<w<<std::endl;
-                            if (w != 0)
-                            {
-                                int facX= xList[ix];
-                                int facY= yList[iy];
-                                int facZ= zList[iz];
-                                if(w>1.01) 
-                                {
-                                    std::cerr<<"Error 1 on tsc schema. operation Aborted."<<std::endl;
-                                    if(colList!=NULL) delete [] colList;
-                                    if(gridList!=NULL)delete [] gridList;
-                                    return false;
-                                }
-                                if(periodic && facX<0)
-                                    facX+=m_sampleDimensions[0];
-                                if(periodic && facX>=m_sampleDimensions[0]) facX-=m_sampleDimensions[0];
-                                if(periodic && facY<0) facY+=m_sampleDimensions[1];
-                                if(periodic && facY>=m_sampleDimensions[1]) facY-=m_sampleDimensions[1];
-                                if(periodic && facZ<0) facZ+=m_sampleDimensions[2];
-                                if(periodic && facZ>=m_sampleDimensions[2]) facZ-=m_sampleDimensions[2];
-                                
-                                if(facX<0  || facX>= m_sampleDimensions[0])
-                                    continue;
-                                if(facY<0  || facY>= m_sampleDimensions[1])
-                                    continue;
-                                if(facZ<0  || facZ>= m_sampleDimensions[2])
-                                    continue;
-                                
-                                int ind_test = facX + m_sampleDimensions[0]*facY + m_sampleDimensions[0]*m_sampleDimensions[1]*facZ;
-                                if(ind_test<0 || ind_test>(nCell-1))
-                                {
-                                    std::cerr<<"Error on particle "<<ptId<<" xyzList "<<xList[ix]<<" "<< yList[iy]<<" "<<zList[iz]<<" AND w w_x,y,z "<<w<<" "<<w_x<<" "<<w_y<<" "<<w_z<<std::endl;
-                                }
-                                if(ind_test<gridIndex[0] || ind_test>gridIndex[1]) //ind1 NOT in cache!
-                                {
-                                    std::cerr<<"Particle "<<ptId<<" xyzList "<<xList[ix]<<" "<< yList[iy]<<" "<<zList[iz]<<" ind_test= "<<ind_test<<" "<<gridIndex[0]<<" "<<gridIndex[1]<<std::endl;
-                                    tableGrid.putColumn(gridList, nOfField, gridIndex[0],gridIndex[1],m_grid); //QUI controlla:estremi INCLUSI
-                                    gridIndex[0]=ind_test;
-                                    gridIndex[1]=gridIndex[0]+m_numNewPts-1;
-                                    if(gridIndex[1]>=gridPts)gridIndex[1]=gridPts-1;
-                                    tableGrid.getColumn(gridList,nOfField,gridIndex[0],gridIndex[1],m_grid); 	
-                                }
-                                
-                                
-                                for(int j=0;j<fieldList.size();j++)
-                                {
-                                    if(m_useConstant) 
-                                        norm=m_constValue;
-                                    else
-                                        norm=m_fArray[3+j][ptId];
-                                    m_grid[j][ind_test-gridIndex[0]]+=w*norm/cellVolume;
-                                    wc+=w*norm;
-                                    
-                                }
-                            }
-                            
-                        }// closes for iz
-                    }// closes for iy
-                }// closes for ix
-                if(wc>1.1*norm)
-                {						
-                    std::cerr<<"Error 2 on tsc schema. Operation Aborted"<<std::endl;
-                    if(colList!=NULL) delete [] colList;
-                    if(gridList!=NULL)delete [] gridList;
-                    return false;
-                }
-                
-            }// closes for ptId
-        } // close if TSC
-        //
-        startCounter=toRow+1;
-        totEle=totEle-(toRow-fromRow+1);
-        if(totEle<0) totEle=0;
-    }  // while(totEle!=0)
-    // final write of tableGrid
+        
+        if (m_cic) {
+            if (!processCIC(tableGrid, gridList, nOfField, fieldList, gridIndex)) {
+                delete[] colList;
+                delete[] gridList;
+                return false;
+            }
+        }
+        if (m_tsc) {
+            processTSC(tableGrid, gridList, nOfField, fieldList, gridIndex);
+        }
+        gridHandle.startCounter=gridHandle.toRow+1;
+        gridHandle.totEle=gridHandle.totEle-(gridHandle.toRow-gridHandle.fromRow+1);
+        if(gridHandle.totEle<0) gridHandle.totEle=0;
+    } 
     if(m_avg) nOfField=3;
     tableGrid.putColumn(gridList,nOfField,gridIndex[0],gridIndex[1],m_grid);  
     
     m_executeDone=true;
-    /*      	std::ofstream outtFile("/home/ube/test/1.txt",std::ios::out);
-     outtFile<<"index_x  index_y  index_z  density"<<std::endl;
-     int nCell=m_sampleDimensions[0]*m_sampleDimensions[1]*m_sampleDimensions[2];
-     
-     for(int ind_x = 0; ind_x <m_numNewPts; ++ind_x)
-     {
-     double den_w = m_grid[0][ind_x];
-     outtFile<<ind_x<<" "<<m_grid[0][ind_x]<<std::endl;
-     }// closes x cycle 
-     outtFile.close();*/
     if(colList!=NULL) delete [] colList;
     if(gridList!=NULL)delete [] gridList;
     return true;
