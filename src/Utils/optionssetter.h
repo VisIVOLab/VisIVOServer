@@ -25,6 +25,8 @@
 #include <vector>
 #include <map>
 #include "visivodef.h"
+#include "vstable.h"
+#include "vstablemem.h"
 
 struct SplotchCamera
 {
@@ -155,6 +157,7 @@ struct VisIVOServerOptions
    float vtkScale; //! Scale (amplification) factor
    float vtkEcc; //! Exccentricity
    bool internalData;
+   bool useMemory;
 
 // vtk image creation
   std::string mode;
@@ -174,6 +177,7 @@ struct VisIVOServerOptions
     
     //splotch recalc cam
     bool autocalcCam;
+
 };
 
 class OptionsSetter
@@ -196,7 +200,9 @@ class OptionsSetter
     int readData();
     bool internalData();
     VisIVOServerOptions returnOptions(){return m_vServer;};
-  
+    void setUseMemory(bool use){useInMemory=use;}
+    bool getUseMemory(){return useInMemory;}
+    void setTable(VSTable* t){table=t;}
   protected:
   
     VisIVOServerOptions m_vServer;
@@ -228,6 +234,8 @@ class OptionsSetter
     std::vector<std::string> m_cyclePlanePointNormal;
     bool m_inputLfnGiven;
     bool fileIsAtTheEnd;
+    bool useInMemory = false;
+    VSTable *table;
     
     std::map<std::string,std::string> viewParameter;
     std::vector <std::string> outFilename;

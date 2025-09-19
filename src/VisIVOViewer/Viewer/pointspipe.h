@@ -25,6 +25,9 @@
 #include "pipe.h"
 #include "optionssetter.h"
 
+#include "vtkGenericRenderWindowInteractor.h"
+#include "vtkDataArray.h"
+
 class vtkActor;
 class vtkSphereSource;
 class vtkConeSource;
@@ -58,7 +61,24 @@ class vtkConeSource;
     void setResolution ();
     bool SetXYZ(vtkFloatArray *xField, vtkFloatArray *yField, vtkFloatArray *zField  );
     void setScaling ();
-     
+    vtkSmartPointer<vtkFloatArray> createAxisArray(const std::string& name, unsigned long long int nRows);
+    int getColumnIndex(const std::map<std::string, int>& columns, const std::string& name);
+    void setupVertexCells();
+    bool loadColorScalars(std::ifstream& inFile);
+    bool assignColumnToArray(vtkFloatArray* array, const std::string& fieldName, std::ifstream* inFile, int fileColumnIndex);
+    void applySingleColor(vtkActor* actor, const std::string& colorName);
+    void setBackgroundColor(const std::string& colorName);
+    void setRenderWindow(const std::string& size);
+    void configureStereoRender();
+    int getColorTableIndex(const std::string& color);
+    bool loadHeightScalars(std::ifstream& inFile);
+    bool shouldLoadHeightScalars() const;
+    bool shouldLoadRadiusScalars() const;
+    bool loadRadiusScalars(std::ifstream& inFile, vtkFloatArray* radiusArrays);
+    void configureGlyphs();
+    void configureActor();
+    void finalizeRender(vtkSmartPointer<vtkGenericRenderWindowInteractor> inter);
+    vtkDataArray* setAutorange(vtkFloatArray* arr);
     vtkPolyDataMapper  *m_pConeMapper;
     vtkActor           *m_pConeActor;
     vtkPolyData       *m_polyData;
@@ -70,6 +90,7 @@ class vtkConeSource;
     vtkPoints *m_points;
     
     ExtendedGlyph3D *m_glyphFilter;
+    
 
         
     double m_xRange[2] ,m_yRange[2] , m_zRange[2];

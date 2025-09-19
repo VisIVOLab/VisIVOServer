@@ -45,6 +45,8 @@
 #include "vsstatisticop.h"
 #include "vsutils.h"
 #include "vstableop.h"
+#include "vstable.h"
+#include "vstablemem.h"
 
 
 
@@ -69,14 +71,9 @@ const double Pipe::INVALID_CAM = -123456789.31;
 void Pipe::constructVTK()
 //---------------------------------
 {
-   
 	m_pRenderer     = vtkRenderer::New();
 	m_lut           = vtkLookupTable::New();
 	m_pRenderWindow = vtkRenderWindow::New();
-
- 
-
-
 }
 //------------------------
 int Pipe::createPipe ()
@@ -220,9 +217,6 @@ std::string Pipe::saveImageAsPng(int num )
 void Pipe::setCamera (SplotchCamera *splCamera)
 //---------------------------------------------------------------------
 {
-
-    
-    
 	m_camera =m_pRenderer->GetActiveCamera();
 	
 
@@ -518,4 +512,3 @@ void Pipe::setAxes ( vtkDataSet *data, double *bounds  )
     axesActor->Delete();
   
 }
-

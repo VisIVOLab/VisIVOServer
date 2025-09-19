@@ -298,7 +298,7 @@ bool OptionsSetter::readSplocthColumn()
 int OptionsSetter::readData ( )
 //---------------------------------------------------------------------
 {
-	if(!m_vServer.dataRead)
+	if(!m_vServer.dataRead || m_vServer.useMemory)
 		return -1;
   	std::ifstream inFile;
   	inFile.open(m_vServer.path.c_str(), ios::binary);
@@ -508,40 +508,6 @@ int OptionsSetter::parseOption (const std::vector<std::string>  arguments )
             ss << m_vServer.cycleSkipTo;//add number to the stream
             
             viewParameter["cycle_skip_to"]=ss.str();
-        }
-
-        if(params.param_present("autorange"))
-        {
-            tmp =params.find<std::string>("autorange","no");
-            if(tmp=="yes")
-            {
-                m_vServer.autoRange="yes";
-                viewParameter["autoRange"]="yes";
-            }
-        }
-
-        if(params.param_present("autorangemin"))
-        {
-            m_vServer.setAutoRangeMin=true;
-            m_vServer.autoRangeMin =params.find<float>("autorangemin",-1);
-            
-            std::stringstream ss;//create a stringstream
-            ss << m_vServer.autoRangeMin;//add number to the stream
-
-            
-            viewParameter["autoRangeMin"]=ss.str();
-        }
-
-        if(params.param_present("autorangemax"))
-        {
-            m_vServer.setAutoRangeMax=true;
-            m_vServer.autoRangeMax =params.find<float>("autorangemax",-1);
-            
-            std::stringstream ss;//create a stringstream
-            ss << m_vServer.autoRangeMax;//add number to the stream
-
-            
-            viewParameter["autoRangeMax"]=ss.str();
         }
         
         if(params.param_present("colorrangeto"))
@@ -1923,6 +1889,12 @@ int OptionsSetter::parseOption (const std::vector<std::string>  arguments )
                 
             }
             
+            else if(arguments[i]=="--usememory")
+            {
+                m_vServer.useMemory=true;
+                useInMemory = true;
+            }
+
             else if(arguments[i]=="--autorangemin")
             {
                 std::string ckInput=arguments[i+1];
@@ -2345,7 +2317,7 @@ int OptionsSetter::parseOption (const std::vector<std::string>  arguments )
         setColorLut();
     setGlyphs();
     
-    if(!m_vServer.internalData)
+    if(!m_vServer.internalData && !m_vServer.useMemory)
     {
         std::fstream inFile;
         //  std::clog<<m_vServer.path<<std::endl;
@@ -2403,14 +2375,13 @@ int OptionsSetter::parseOption (const std::vector<std::string>  arguments )
             m_vServer.isColorRangeTo=false;
             m_vServer.isColorRangeFrom=false;
         }
-    if(!m_vServer.internalData)
+    if(!m_vServer.internalData && !m_vServer.useMemory)
     {
         if(!readHeader())
             return -1;
         if(!setAxisScalarVectorAndVolumesFields()) return -1; // check for all fields in the table
     }
     //   }
-    
     setNumberImages();
     
     
@@ -3633,6 +3604,7 @@ int OptionsSetter::images()
     std::string VSCycleFileList;
     std::string cycleRootName,lfnCycleRootName;
     cycleRootName=m_vServer.imageName;
+
     
     size_t ext;
     ext=cycleRootName.find(".png");
@@ -3767,7 +3739,6 @@ int OptionsSetter::images()
     
     if(m_vServer.cycle && (m_vServer.cycleSkipFrom>=0 && m_vServer.cycleSkipTo >m_vServer.cycleSkipFrom))
         countCycle=m_vServer.cycleSkipFrom;
-    
     for (int i=0;i<=m_vServer.numImageToLoad;i++)
     {
         if(m_vServer.cycle)
@@ -3888,8 +3859,12 @@ int OptionsSetter::images()
                 pp=new PointsSmoothPipe(m_vServer);
             
             else{
-                pp=new PointsPipe(m_vServer); 
+                pp=new PointsPipe(m_vServer);
             }
+            if(useInMemory){
+                pp->setUseMemory(true);
+                pp->setMemTable(table);
+            } 
             errPipe=pp->createPipe();
             std::string fName = pp->saveImageAsPng(m_vServer.numImage);
             

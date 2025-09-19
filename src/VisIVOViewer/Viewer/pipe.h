@@ -25,6 +25,8 @@
 
 
 #include "optionssetter.h"
+#include "vstable.h"
+#include "vstablemem.h"
 
 class vtkRenderer;
 class vtkRenderWindow;
@@ -46,7 +48,8 @@ class Pipe
     virtual  void destroyAll(){};
     virtual  bool readData();
     virtual  int getCamera(SplotchCamera *splCamera);
-   
+    void setUseMemory ( bool use ){useMemory = use;};
+    void setMemTable ( VSTable *table ){memTable = table;};
    
     
   protected:
@@ -55,7 +58,7 @@ class Pipe
     void constructVTK();
      void destroyVTK();
      void setBoundingBox ( vtkDataObject *data );
-     void colorBar ();
+     virtual void colorBar ();
      virtual  void setAxes(vtkDataSet *data,double *bounds);
     
     VisIVOServerOptions m_visOpt;
@@ -65,9 +68,9 @@ class Pipe
     vtkRenderer       *m_pRenderer;
     vtkRenderWindow   *m_pRenderWindow;
     vtkLookupTable      *m_lut;
-    
+    VSTable* memTable;
+    bool useMemory = false;
 
 };
 
 #endif
-
