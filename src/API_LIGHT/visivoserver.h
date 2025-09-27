@@ -30,6 +30,9 @@
 	#include <stdio.h>
 #endif
 
+#include <vstable.h>
+#include <vstablemem.h>
+#include "commandline.h"
 
 struct VisIVOFilter
 {
@@ -72,6 +75,9 @@ struct VisIVOImporter
   int comp[3];
   float size[3], missing, text;
   unsigned long long int npoints;
+  CommandLine *pComLine;
+  bool enableInMemory = false;
+  std::vector<VSTable*>* memTables = nullptr;
 };
 
 struct VisIVOViewer
@@ -135,6 +141,8 @@ struct VisIVOViewer
   char labelColor[256];
   char labelhsml[256];
   double cliprange[2];
+  bool enableInMemory = false;
+  VSTable *table;
 };
 
 struct VBT

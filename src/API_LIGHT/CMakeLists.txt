@@ -12,14 +12,10 @@ set(CMAKE_INCLUDE_CURRENT_DIR True)
 
 find_package(Boost REQUIRED)
 find_package(CFITSIO REQUIRED)
-find_package(HDF5 REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C HL CXX)
 find_package(CURL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
-
-find_library(TIRPC_LIBRARIES
-    NAMES tirpc
-)
 
 set(API_HEADERS
     visivo.h
@@ -40,8 +36,6 @@ set(IMPORTER_SOURCE
     ${IMPORTER_SOURCE_DIR}/Importers/asciisource.h
     ${IMPORTER_SOURCE_DIR}/Importers/binsource.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/binsource.h
-    ${IMPORTER_SOURCE_DIR}/Importers/changasource.cpp
-    ${IMPORTER_SOURCE_DIR}/Importers/changasource.h
     ${IMPORTER_SOURCE_DIR}/Importers/csvsource.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/csvsource.h
     ${IMPORTER_SOURCE_DIR}/Importers/fitsimagesource.cpp
@@ -65,6 +59,20 @@ set(IMPORTER_SOURCE
     ${IMPORTER_SOURCE_DIR}/Importers/vosourcenew.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/vosourcenew.h
 )
+
+if(HAS_CHANGA_IMPORTER)
+    list(APPEND IMPORTER_SOURCE
+        ${IMPORTER_SOURCE_DIR}/Importers/changasource.cpp
+        ${IMPORTER_SOURCE_DIR}/Importers/changasource.h
+    )
+endif()
+
+if(HAS_HECUBA_IMPORTER)
+    list(APPEND IMPORTER_SOURCE
+        ${IMPORTER_SOURCE_DIR}/Importers/hecubasource.cpp
+        ${IMPORTER_SOURCE_DIR}/Importers/hecubasource.h
+    )
+endif()
 
 set(FILTERS_SOURCE
     ${FILTERS_SOURCE_DIR}/Filters/fpoptimizer.cpp
@@ -188,6 +196,9 @@ set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/vsobject.h
     ${UTILS_SOURCE_DIR}/vstable.cpp
     ${UTILS_SOURCE_DIR}/vstable.h
+    ${UTILS_SOURCE_DIR}/vstablemem.cpp
+    ${UTILS_SOURCE_DIR}/vstablemem.h
+
 )
 
 add_library(VisIVOApiLight SHARED
@@ -221,8 +232,27 @@ target_link_libraries(VisIVOApiLight PRIVATE
     OpenMP::OpenMP_CXX
     ${VTK_LIBRARIES}
     ${HDF5_LIBRARIES}
-    ${TIRPC_LIBRARIES}
 )
+
+if(HAS_CHANGA_IMPORTER)
+    find_library(TIRPC_LIBRARIES
+        NAMES tirpc
+    )
+    target_link_libraries(VisIVOApiLight PRIVATE ${TIRPC_LIBRARIES})
+    target_compile_definitions(VisIVOApiLight PRIVATE HAS_CHANGA_IMPORTER=1)
+endif()
+
+if(HAS_HECUBA_IMPORTER)
+    set(HECUBA_ROOT "/usr/local" CACHE PATH "Path to Hecuba installation")
+
+    find_library(HECUBA_HFETCH_LIBRARY hfetch PATHS ${HECUBA_ROOT}/lib)
+    if(NOT HECUBA_HFETCH_LIBRARY)
+        message(FATAL_ERROR "Hecuba hfetch library not found in ${HECUBA_ROOT}/lib")
+    endif()
+    target_include_directories(VisIVOApiLight PRIVATE ${HECUBA_ROOT}/include ${HECUBA_ROOT}/include/hecuba)
+    target_link_libraries(VisIVOApiLight PRIVATE ${HECUBA_HFETCH_LIBRARY}) 
+    target_compile_definitions(VisIVOApiLight PRIVATE HAS_HECUBA_IMPORTER=1)
+endif()
 
 install(TARGETS VisIVOApiLight DESTINATION lib)
 install(FILES ${API_HEADERS} DESTINATION include)

@@ -111,6 +111,7 @@
 #define VI_SET_VO 12
 #define VI_SET_LFNOUT 13
 #define VI_SET_SE 14
+#define VI_SET_INMEMORY 15
 
 
 // Define Viewer Setting Code
@@ -149,6 +150,7 @@
 #define VV_SET_CAMFP 1512
 #define VV_SET_CLIPLARGE 1513
 #define VV_SET_CLIPRANGE 1514
+#define VV_SET_USEMEMORY 1515
 
 // cycle
 #define VV_SET_CYCLE 1045

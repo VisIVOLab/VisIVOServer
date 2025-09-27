@@ -3,6 +3,7 @@
 #define VISIVOC_H
 
 #include "visivodef.h"
+#include "vstable.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -23,6 +24,8 @@ extern "C"
 	int VV_SetSplotchLabColor(VisIVOViewer *env, float *color, char *name, int nRows);
 	int VV_SetSplotchLabhsml(VisIVOViewer *env, float *hsml, char *name, int nRows);
 	int VV_SetAtt(VisIVOViewer *env, int code, char *value);
+	int VV_SetTable(VisIVOViewer *env, VSTable *table);
+	int VV_SetTableFromImporter(VisIVOViewer* viewer, VisIVOImporter* importer, size_t tableIndex);
 	int VV_SetCameraPath(VisIVOViewer *env, int type, float *camera, int zoomend, float *zsf, int framesec,
 						 int length, float *campos, float *camfp, float *camroll, int fcycle);
 	int VV_View(VisIVOViewer *env);
@@ -31,6 +34,7 @@ extern "C"
 	int VI_Clean(VisIVOImporter *env);
 	int VI_SetAtt(VisIVOImporter *env, int code, char *value);
 	int VI_Import(VisIVOImporter *env);
+	void VI_FreeImporter(VisIVOImporter* env);
 
 	int VF_Init(VisIVOFilter *env);
 	int VF_Clean(VisIVOFilter *env);
