@@ -842,7 +842,7 @@ if(code==VI_SET_FFORMAT)
 	  && sValue!="fly" && sValue!="fitstable"  && sValue!="gadget"
 	  && sValue!="hdf5" && sValue!="rawpoints" && sValue!="rawgrids"
 	  && sValue!="xml" && sValue!="votable" && sValue!="muportal"
-	  && sValue !="ramses")
+	  && sValue !="ramses" && sValue !="changa" && sValue !="hecuba")
   {
     std::cerr<<"Invalid value VI_SET_FFORMAT "<<sValue<<std::endl;
     env->setatt[code]=0;

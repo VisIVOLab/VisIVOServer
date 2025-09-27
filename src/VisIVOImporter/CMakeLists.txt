@@ -5,9 +5,6 @@ project(VisIVOImporter CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-option(HAS_CHANGA_IMPORTER "Enable support for Changa importer" OFF)
-option(HAS_HECUBA_IMPORTER "Enable support for Hecuba importer" OFF)
-
 find_package(CFITSIO REQUIRED)
 find_package(HDF5 REQUIRED)
 find_package(CURL REQUIRED)

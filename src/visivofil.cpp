@@ -35,8 +35,7 @@
 #pragma message "SERIAL compilation"
 #endif
 
-extern "C"
-{
+extern "C" {
 
 // Dichiarazione delle funzioni principali.
 int VF_Filter(VisIVOFilter *env);
@@ -532,7 +531,6 @@ appParameters.insert(make_pair("MpiSize",MpiSize.str()));
 startFilter startFilter(appParameters);
 return EXIT_SUCCESS;
 }
-
 } // extern "C"
 //#ifdef HAVE_CONFIG_H
 //#include <config.h>

@@ -35,8 +35,8 @@
 #else
 	#include <unistd.h>
 #endif
-extern "C"
-{
+
+extern "C"{
 
 // Dichiarazione delle funzioni principali.
 int VI_Import(VisIVOImporter *env);
@@ -83,6 +83,11 @@ void *VI_Import_Thread(void *id)
 	return 0;
 }
 
+void VI_FreeImporter(VisIVOImporter* env) {
+    if (!env) return;
+    delete env->pComLine;  
+}
+
 //---------------------------
 int VI_Import(VisIVOImporter *env)
 //---------------------------
@@ -90,7 +95,7 @@ int VI_Import(VisIVOImporter *env)
 bool fitsRestore=false;
 std::string fitsOriginalName;
 std::string tmpOutName;  
-CommandLine *pComLine=new CommandLine;
+env->pComLine=new CommandLine;
 std::vector<std::string> args;
 
 if(env->setatt[VI_SET_FFORMAT]==0)
@@ -255,6 +260,11 @@ for(int idPar=0; idPar<NPAR; idPar++)
       args.push_back(env->se);
       break;
     }
+     case VI_SET_INMEMORY:
+    {
+      args.push_back("--inmemory");
+      break;
+    }
   
    } //switch
   }//if
@@ -302,18 +312,17 @@ for(int idPar=0; idPar<NPAR; idPar++)
 // for(int i=0;i<args.size();i++)std::clog<<args[i]<<" "; 
 //  std::clog<<std::endl<<"test VisIVO Importer"<<std::endl;
   int ret=0;
-  ret=pComLine->parseOption (args );
+  ret=env->pComLine->parseOption (args );
   if(ret<0) return invalidImporterOptions;
-  ret=pComLine->loadFile();
+  ret=env->pComLine->loadFile();
   if(ret<0) return invalidImporterOperation;
-
  
-  if((pComLine -> getRemoteFile() !="noremote") && !((pComLine -> getType() =="rawpoints") || (pComLine -> getType() =="xml") ) )
+  if((env->pComLine -> getRemoteFile() !="noremote") && !((env->pComLine -> getType() =="rawpoints") || (env->pComLine -> getType() =="xml") ) )
   { 
 	std::string remoteFile;
-	remoteFile=pComLine -> getRemoteFile();
+	remoteFile=env->pComLine -> getRemoteFile();
 	remove(remoteFile.c_str());
-	if(pComLine -> getType() =="binary")
+	if(env->pComLine -> getType() =="binary")
 	{
 		remoteFile=remoteFile.append(".head");
 		remove(remoteFile.c_str());
@@ -330,8 +339,11 @@ for(int idPar=0; idPar<NPAR; idPar++)
   	rename(tmpOutName.c_str(),fitsOriginalName.c_str());
   }
 //  std::cout<<"VisIVOImporter operation done."<<std::endl;		
-  if ( pComLine)
-    delete pComLine ;
+  //if ( pComLine)
+  //  delete pComLine ;
+  if(env->enableInMemory){
+    env->memTables = &(env->pComLine->getTable());
+  }
 
   return 0;
 }

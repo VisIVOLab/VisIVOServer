@@ -5,12 +5,9 @@
 #include <iostream>
 #include "optionssetter.h"
 #include "vtkGraphicsFactory.h"
-#include "vtkImagingFactory.h"
 
 extern "C"
 {
-
-// Dichiarazione delle funzioni principali.
 int VV_View(VisIVOViewer *env);
 void* VV_View_Thread(void *id);
 void* VV_View_Process(void *id);
@@ -126,6 +123,37 @@ void *VV_View_Process(void *id)
 	return 0;	
 }
 	
+//----------------------------
+int VV_SetTable(VisIVOViewer *env, VSTable *table)
+//----------------------------
+{
+    if (env == nullptr || table == nullptr)
+        return invalidParCode;
+
+    env->table = table;
+    env->enableInMemory = true;
+
+    return noError;
+}
+
+int VV_SetTableFromImporter(VisIVOViewer* viewer, VisIVOImporter* importer, size_t index) {
+    if (!viewer || !importer) return -1;
+    if (index >= importer->memTables->size() || index < 0) {
+		std::cerr << "Desired table index not available" << std::endl;
+		return -1;
+	}
+	
+    VSTable* importerTable = importer->memTables->at(index);
+
+    if (!importerTable) {
+		std::cerr << "Table not defined" << std::endl;
+		return -1;
+	}
+
+    viewer->table = importerTable;
+    viewer->enableInMemory = true;
+	return 0;
+}
 
 //----------------------------
 int VV_View(VisIVOViewer *env)
@@ -136,7 +164,7 @@ int VV_View(VisIVOViewer *env)
 #endif
 OptionsSetter *pOptSett= new OptionsSetter;
 std::vector<std::string> args;
-if(env->setatt[VV_SET_INTERNAL-VV_PARAM]==0 && env->setatt[VV_SET_FILEVBT-VV_PARAM]==0)
+if(env->setatt[VV_SET_INTERNAL-VV_PARAM]==0 && env->setatt[VV_SET_FILEVBT-VV_PARAM]==0 && !env->enableInMemory)
 {
   std::cerr<<"VV_View: Invalid VBT. Please set VI_SET_FILEVBT ";
   std::cerr<<"with VI_SettAtt function"<<std::endl;
@@ -500,6 +528,11 @@ for(int idPar=0; idPar<NPAR; idPar++)
 	args.push_back("--logscale");
 	break;
       }
+	  case VV_SET_USEMEMORY:
+      {
+	args.push_back("--usememory");
+	break;
+      }
       case VV_SET_GLYPHS:
       {
 	args.push_back("--glyphs");
@@ -682,9 +715,11 @@ for(int idPar=0; idPar<NPAR; idPar++)
   pOptSett->parseOption(args);
   VisIVOServerOptions opt=pOptSett->returnOptions();
   
-  if(!pOptSett->internalData()) pOptSett->readData(); 
+  if(env->enableInMemory) pOptSett->setTable(env->table);
+  //if(!pOptSett->internalData() && !pOptSett->getUseMemory()) pOptSett->readData(); 
   if(pOptSett->images()<0)
   { 
+	std::clog << "Error" << std::endl;
       delete pOptSett;
       
       #ifndef WIN32

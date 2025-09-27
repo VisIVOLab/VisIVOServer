@@ -116,16 +116,15 @@ int ChangaSource::readData()
   int idx = m_pointsBinaryName.rfind('.');
 	std::string pathFileIn = m_pointsBinaryName.erase(idx, idx+4);
 	std::string pathFileOut = pathFileIn;
+  std::string pathHeader;
   //gas_particle* gasParticles = (gas_particle*) malloc(sizeof(gas_particle)*nsph);
   std::ofstream outfile((pathFileOut + "GAS" + ".bin").c_str(),std::ofstream::binary );
   float* gasParticles = (float*) malloc(sizeof(float)*12*nsph);
-  std::clog << sizeof(gas_particle)*nsph << std::endl;
   if (gasParticles == NULL) {
     std::clog << "Malloc Error" << std::endl;
     return 1;
   }
   float* tmp = gasParticles;
-  std::clog << sizeof(gas_particle) << std::endl;
   for (int i=0; i<nsph; ++i) {
  // std::clog << i << std::endl;
     xdr_vector(&xdrread,(char *) tmp, (12),
@@ -147,21 +146,45 @@ int ChangaSource::readData()
   gasBlocks.push_back("METALS"); //10
   gasBlocks.push_back("PHI"); //11
 
+  if(useMemory){
+    VSTable* table = new VSTableMem();
+    table->setType("float");
+    table->setNumberOfRows(nsph);
+    for(const auto &blockName : gasBlocks) table->addCol(blockName);
+    memTables.push_back(table);
+  }
+
   float *bufferBlock = (float*) malloc(sizeof(float)*nsph);
   for(int elem = 0; elem < 12; elem ++){
     for (int part=0; part<nsph; part++) {
       bufferBlock[part] = gasParticles[part*12 + elem];
     }
-		outfile.write((char *)(bufferBlock), sizeof(float)*nsph);
+    if (useMemory) {
+      unsigned int colId = memTables[0]->getColId(gasBlocks[elem]);
+      if (colId == (unsigned int)-1) {
+        std::cerr << "Invalid column: " << gasBlocks[elem] << std::endl;
+        continue;
+      }
+
+      unsigned int colList[1] = {colId};
+      float* dataPtrs[1] = {bufferBlock};
+
+      unsigned long long globalRowStart = 0;
+      unsigned long long globalRowEnd   = nsph - 1;
+      memTables[0]->putColumn(colList, 1, globalRowStart, globalRowEnd, dataPtrs);
+    }
+    else {
+      outfile.write((char *)(bufferBlock), sizeof(float) * nsph);
+    }
   }
-
-	outfile.close();
-
-	std::string pathHeader = pathFileOut+"GAS"+ ".bin";
-	makeHeader(nsph, pathHeader, gasBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
-
-  outfile.open((pathFileOut + "DARK" + ".bin").c_str(),std::ofstream::binary );
+  if(!useMemory){
+	  outfile.close();
+    pathHeader = pathFileOut+"GAS"+ ".bin";
+    makeHeader(nsph, pathHeader, gasBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
   
+  
+    outfile.open((pathFileOut + "DARK" + ".bin").c_str(),std::ofstream::binary );
+  }
   float* darkParticles = (float*) malloc(sizeof(float)*9*ndark);
   if (darkParticles == NULL) {
     std::clog << "Malloc Error" << std::endl;
@@ -188,20 +211,46 @@ int ChangaSource::readData()
   darkBlocks.push_back("EPS");//7
   darkBlocks.push_back("PHI"); //8
 
+  if(useMemory){
+    VSTable* table = new VSTableMem();
+    table->setType("float");
+    table->setNumberOfRows(ndark);
+    for(const auto &blockName : darkBlocks) table->addCol(blockName);
+    memTables.push_back(table);
+  }
+
   float* bufferBlock2 = (float*) malloc(sizeof(float)*ndark);
   for(int elem = 0; elem < 9; elem ++){
     for (int part=0; part<ndark; part++) {
       bufferBlock2[part] = darkParticles[part*9 + elem];
     }
-		outfile.write((char *)(bufferBlock2), sizeof(float)*ndark);
+    if (useMemory) {
+      unsigned int colId = memTables[1]->getColId(darkBlocks[elem]);
+      if (colId == (unsigned int)-1) {
+        std::cerr << "Invalid column: " << darkBlocks[elem] << std::endl;
+        continue;
+      }
+
+      unsigned int colList[1] = {colId};
+      float* dataPtrs[1] = {bufferBlock};
+
+      unsigned long long globalRowStart = 0;
+      unsigned long long globalRowEnd   = nsph - 1;
+      memTables[1]->putColumn(colList, 1, globalRowStart, globalRowEnd, dataPtrs);
+    }
+    else {
+      outfile.write((char *)(bufferBlock), sizeof(float) * nsph);
+    }
   }
-  pathHeader = pathFileOut+"DARK"+ ".bin";
-	makeHeader(ndark, pathHeader, darkBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
 
-	outfile.close();
-
-  outfile.open((pathFileOut + "STAR" + ".bin").c_str(),std::ofstream::binary );
+  if(!useMemory){
+    pathHeader = pathFileOut+"DARK"+ ".bin";
+    makeHeader(ndark, pathHeader, darkBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
   
+	  outfile.close();
+    
+    outfile.open((pathFileOut + "STAR" + ".bin").c_str(),std::ofstream::binary );
+  }
   float* starParticles = (float*) malloc(sizeof(float)*11*nstar);
   if (starParticles == NULL) {
     std::clog << "Malloc Error" << std::endl;
@@ -230,16 +279,42 @@ int ChangaSource::readData()
   starBlocks.push_back("EPS");//9
   starBlocks.push_back("PHI"); //10
 
+  if(useMemory){
+    VSTable* table = new VSTableMem();
+    table->setType("float");
+    table->setNumberOfRows(nstar);
+    for(const auto &blockName : starBlocks) table->addCol(blockName);
+    memTables.push_back(table);
+  }
+
   float* bufferBlock3 = (float*) malloc(sizeof(float)*nstar);
   for(int elem = 0; elem < 11; elem ++){
     for (int part=0; part<nstar; part++) {
       bufferBlock3[part] = starParticles[part*11 + elem];
     }
-		outfile.write((char *)(bufferBlock3), sizeof(float)*nstar);
-  }
-  pathHeader = pathFileOut+"STAR"+ ".bin";
-	makeHeader(nstar, pathHeader, starBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
+    if (useMemory) {
+      unsigned int colId = memTables[2]->getColId(starBlocks[elem]);
+      if (colId == (unsigned int)-1) {
+        std::cerr << "Invalid column: " << starBlocks[elem] << std::endl;
+        continue;
+      }
 
+      unsigned int colList[1] = {colId};
+      float* dataPtrs[1] = {bufferBlock};
+
+      unsigned long long globalRowStart = 0;
+      unsigned long long globalRowEnd   = nsph - 1;
+      memTables[2]->putColumn(colList, 1, globalRowStart, globalRowEnd, dataPtrs);
+    }
+    else {
+      outfile.write((char *)(bufferBlock), sizeof(float) * nsph);
+    }
+  }
+
+  if(!useMemory){
+    pathHeader = pathFileOut+"STAR"+ ".bin";
+    makeHeader(nstar, pathHeader, starBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
+  }
 	outfile.close();
   
   return 1;

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(VisIVOApiLight
+project(VisIVOApi
     VERSION 2.1
     LANGUAGES CXX
 )
@@ -17,10 +17,6 @@ find_package(CURL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
-find_library(TIRPC_LIBRARIES
-    NAMES tirpc
-)
-
 set(API_HEADERS
     visivo.h
     visivodef.h
@@ -30,7 +26,8 @@ set(API_HEADERS
 set(API_SOURCE
     visivoimp.cpp
     visivofil.cpp
-    visivosetLight.cpp
+    visivoset.cpp
+    visivoview.cpp
 )
 
 set(IMPORTER_SOURCE
@@ -40,8 +37,6 @@ set(IMPORTER_SOURCE
     ${IMPORTER_SOURCE_DIR}/Importers/asciisource.h
     ${IMPORTER_SOURCE_DIR}/Importers/binsource.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/binsource.h
-    ${IMPORTER_SOURCE_DIR}/Importers/changasource.cpp
-    ${IMPORTER_SOURCE_DIR}/Importers/changasource.h
     ${IMPORTER_SOURCE_DIR}/Importers/csvsource.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/csvsource.h
     ${IMPORTER_SOURCE_DIR}/Importers/fitsimagesource.cpp
@@ -65,6 +60,20 @@ set(IMPORTER_SOURCE
     ${IMPORTER_SOURCE_DIR}/Importers/vosourcenew.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/vosourcenew.h
 )
+
+if(HAS_CHANGA_IMPORTER)
+    list(APPEND IMPORTER_SOURCE
+        ${IMPORTER_SOURCE_DIR}/Importers/changasource.cpp
+        ${IMPORTER_SOURCE_DIR}/Importers/changasource.h
+    )
+endif()
+
+if(HAS_HECUBA_IMPORTER)
+    list(APPEND IMPORTER_SOURCE
+        ${IMPORTER_SOURCE_DIR}/Importers/hecubasource.cpp
+        ${IMPORTER_SOURCE_DIR}/Importers/hecubasource.h
+    )
+endif()
 
 set(FILTERS_SOURCE
     ${FILTERS_SOURCE_DIR}/Filters/fpoptimizer.cpp
@@ -168,14 +177,22 @@ set(VSUTILS_SOURCE
 )
 
 set(UTILS_SOURCE
+    ${UTILS_SOURCE_DIR}/color.cpp
+    ${UTILS_SOURCE_DIR}/color.h
     ${UTILS_SOURCE_DIR}/commandline.cpp
     ${UTILS_SOURCE_DIR}/commandline.h
+    ${UTILS_SOURCE_DIR}/extendedglyph3d.cpp
+    ${UTILS_SOURCE_DIR}/extendedglyph3d.h
     ${UTILS_SOURCE_DIR}/fparser.cpp
     ${UTILS_SOURCE_DIR}/fparser.h
     ${UTILS_SOURCE_DIR}/historyXmlWriter.cc
     ${UTILS_SOURCE_DIR}/historyXmlWriter.h
+    ${UTILS_SOURCE_DIR}/optionssetter.cpp
+    ${UTILS_SOURCE_DIR}/optionssetter.h
     ${UTILS_SOURCE_DIR}/parametersparser.cpp
     ${UTILS_SOURCE_DIR}/parametersparser.h
+    ${UTILS_SOURCE_DIR}/luteditor.cpp
+    ${UTILS_SOURCE_DIR}/luteditor.h
     ${UTILS_SOURCE_DIR}/tinystr.cpp
     ${UTILS_SOURCE_DIR}/tinystr.h
     ${UTILS_SOURCE_DIR}/tinyxml.cpp
@@ -188,45 +205,211 @@ set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/vsobject.h
     ${UTILS_SOURCE_DIR}/vstable.cpp
     ${UTILS_SOURCE_DIR}/vstable.h
+    ${UTILS_SOURCE_DIR}/vstablemem.cpp
+    ${UTILS_SOURCE_DIR}/vstablemem.h
 )
 
-add_library(VisIVOApiLight SHARED
+find_package(VTK 9.1.0 REQUIRED COMPONENTS
+    ChartsCore
+    CommonColor
+    CommonComputationalGeometry
+    CommonCore
+    CommonDataModel
+    CommonExecutionModel
+    CommonMath
+    CommonMisc
+    CommonSystem
+    CommonTransforms
+    DICOMParser
+    DomainsChemistry
+    doubleconversion
+    exodusII
+    expat
+    FiltersAMR
+    FiltersCore
+    FiltersExtraction
+    FiltersFlowPaths
+    FiltersGeneral
+    FiltersGeneric
+    FiltersGeometry
+    FiltersHybrid
+    FiltersHyperTree
+    FiltersImaging
+    FiltersModeling
+    FiltersParallel
+    FiltersParallelImaging
+    FiltersProgrammable
+    FiltersSelection
+    FiltersSMP
+    FiltersSources
+    FiltersStatistics
+    FiltersTexture
+    FiltersVerdict
+    freetype
+    GeovisCore
+    gl2ps
+    glew
+    ImagingColor
+    ImagingCore
+    ImagingFourier
+    ImagingGeneral
+    ImagingHybrid
+    ImagingMath
+    ImagingMorphological
+    ImagingSources
+    ImagingStatistics
+    ImagingStencil
+    InfovisCore
+    InfovisLayout
+    InteractionImage
+    InteractionStyle
+    InteractionWidgets
+    IOAMR
+    IOCore
+    IOEnSight
+    IOExodus
+    IOExport
+    IOGeometry
+    IOImage
+    IOImport
+    IOInfovis
+    IOLegacy
+    IOLSDyna
+    IOMINC
+    IOMovie
+    IOParallel
+    IOParallelXML
+    IOPLY
+    IOSQL
+    IOVideo
+    IOXML
+    IOXMLParser
+    jsoncpp
+    loguru
+    lz4
+    lzma
+    metaio
+    ogg
+    ParallelCore
+    ParallelDIY
+    RenderingAnnotation
+    RenderingContext2D
+    RenderingCore
+    RenderingFreeType
+    RenderingFreeType
+    RenderingGL2PSOpenGL2
+    RenderingImage
+    RenderingLabel
+    RenderingLOD
+    RenderingOpenGL2
+    RenderingUI
+    RenderingVolume
+    RenderingVolumeOpenGL2
+    sqlite
+    vtksys
+    verdict
+    ViewsContext2D
+    ViewsCore
+    ViewsInfovis
+    zlib
+)
+
+message(STATUS "VisIVOViewer: VTK version " ${VTK_VERSION})
+
+set(VIEWER_SOURCE
+    ${VIEWER_SOURCE_DIR}/Viewer/isosurfacepipe.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/isosurfacepipe.h
+    ${VIEWER_SOURCE_DIR}/Viewer/mainViewer.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/pipe.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/pipe.h
+    ${VIEWER_SOURCE_DIR}/Viewer/pointspipe.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/pointspipe.h
+    ${VIEWER_SOURCE_DIR}/Viewer/pointssmoothpipe.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/pointssmoothpipe.h
+    ${VIEWER_SOURCE_DIR}/Viewer/slicerpipe.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/slicerpipe.h
+    ${VIEWER_SOURCE_DIR}/Viewer/vectorpipe.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/vectorpipe.h
+    ${VIEWER_SOURCE_DIR}/Viewer/volumepipe.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/volumepipe.h
+    ${VIEWER_SOURCE_DIR}/Viewer/vtkimagepipe.cpp
+    ${VIEWER_SOURCE_DIR}/Viewer/vtkimagepipe.h
+)
+
+add_library(VisIVOApi SHARED
     ${API_SOURCE}
     ${API_HEADERS}
     ${IMPORTER_SOURCE}
     ${FILTERS_SOURCE}
+    ${VIEWER_SOURCE}
     ${VSUTILS_SOURCE}
     ${UTILS_SOURCE}
 )
 
-set_target_properties(VisIVOApiLight PROPERTIES
+set_target_properties(VisIVOApi PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
-target_compile_definitions(VisIVOApiLight PRIVATE MAC LIGHT)
+target_compile_definitions(VisIVOApi PRIVATE MAC LIGHT)
 
-target_include_directories(VisIVOApiLight PRIVATE
+target_include_directories(VisIVOApi PRIVATE
     ${IMPORTER_SOURCE_DIR}/Importers
     ${FILTERS_SOURCE_DIR}/Filters
+    ${VIEWER_SOURCE_DIR}/Viewer
     ${VSUTILS_SOURCE_DIR}
     ${UTILS_SOURCE_DIR}
     ${Boost_INCLUDE_DIRS}
+    ${HECUBA_ROOT}/include 
+    ${HECUBA_ROOT}/include/hecuba
+    ${VTK_INCLUDE_DIRS}
 )
 
-target_link_libraries(VisIVOApiLight PRIVATE
+target_link_libraries(VisIVOApi PRIVATE
     CFITSIO::CFITSIO
     CURL::libcurl
     ${MPI_C_LIBRARIES}
     OpenMP::OpenMP_CXX
     ${VTK_LIBRARIES}
     ${HDF5_LIBRARIES}
-    ${TIRPC_LIBRARIES}
+    ${VTK_LIBRARIES}
 )
 
-install(TARGETS VisIVOApiLight DESTINATION lib)
-install(FILES ${API_HEADERS} DESTINATION include)
+if(HAS_CHANGA_IMPORTER)
+    find_library(TIRPC_LIBRARIES
+        NAMES tirpc
+    )
+    target_link_libraries(VisIVOApi PRIVATE ${TIRPC_LIBRARIES})
+    target_compile_definitions(VisIVOApi PRIVATE HAS_CHANGA_IMPORTER=1)
+endif()
+
+if(HAS_HECUBA_IMPORTER)
+    set(HECUBA_ROOT "/usr/local" CACHE PATH "Path to Hecuba installation")
+
+    find_library(HECUBA_HFETCH_LIBRARY hfetch PATHS ${HECUBA_ROOT}/lib)
+    if(NOT HECUBA_HFETCH_LIBRARY)
+        message(FATAL_ERROR "Hecuba hfetch library not found in ${HECUBA_ROOT}/lib")
+    endif()
+    target_include_directories(VisIVOApi PRIVATE ${HECUBA_ROOT}/include ${HECUBA_ROOT}/include/hecuba)
+    target_link_libraries(VisIVOApi PRIVATE ${HECUBA_HFETCH_LIBRARY}) 
+    target_compile_definitions(VisIVOApi PRIVATE HAS_HECUBA_IMPORTER=1)
+endif()
+
+install(TARGETS VisIVOApi DESTINATION lib)
+install(FILES 
+    ${API_HEADERS} 
+    ${UTILS_SOURCE_DIR}/vstable.h
+    ${UTILS_SOURCE_DIR}/vstablemem.h
+    ${UTILS_SOURCE_DIR}/commandline.h
+    ${UTILS_SOURCE_DIR}/vsobject.h
+    ${UTILS_SOURCE_DIR}/visivoutils.h 
+    ${IMPORTER_SOURCE_DIR}/Importers/abstractsource.h
+    DESTINATION include)
 
 set(CXXFLAGS  -fopenmp)
 set(CMAKE_CXX_FLAGS "${CXXFLAGS}")
-target_link_libraries(VisIVOApiLight PUBLIC MPI::MPI_CXX)
+vtk_module_autoinit(
+    TARGETS VisIVOApi
+    MODULES ${VTK_LIBRARIES}
+)
+target_link_libraries(VisIVOApi PUBLIC MPI::MPI_CXX)
