@@ -18,7 +18,6 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-
 #ifndef CHANGASOURCE_H
 #define CHANGASOURCE_H
 
@@ -29,68 +28,68 @@
 #include <rpc/xdr.h>
 #include <rpc/rpc.h>
 
-
 struct header
 {
-    double time ;
-    int nbodies ;
-    int ndim ;
-    int nsph ;
-    int ndark ;
-    int nstar ;
-    int pad;
+  double time;
+  int nbodies;
+  int ndim;
+  int nsph;
+  int ndark;
+  int nstar;
+  int pad;
 };
 
-struct gas_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float rho;
-    float temp;
-    float eps;
-    float metals ;
-    float phi ;
+struct gas_particle
+{
+  float mass;
+  float pos[3];
+  float vel[3];
+  float rho;
+  float temp;
+  float eps;
+  float metals;
+  float phi;
 };
 
-struct dark_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float eps;
-    float phi ;
+struct dark_particle
+{
+  float mass;
+  float pos[3];
+  float vel[3];
+  float eps;
+  float phi;
 };
 
-struct star_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float metals ;
-    float tform ;
-    float eps;
-    float phi ;
+struct star_particle
+{
+  float mass;
+  float pos[3];
+  float vel[3];
+  float metals;
+  float tform;
+  float eps;
+  float phi;
 };
 
 class ChangaSource : public AbstractSource
-   
-{
-  public:
-    int readHeader();
-    int readData();
-    ~ChangaSource();
-    ChangaSource();
-  private:
 
-    int xdr_header(struct header *, XDR);
-    std::vector <std::string> m_fieldsNames;   
-    unsigned int      npart_total[6];
-    XDR xdrread;
-    FILE *fpread;
-    int nsph;
-    int ndark;
-    int nstar;
-    char m_dataType, m_Endian;
-  
+{
+public:
+  int readHeader();
+  int readData();
+  ~ChangaSource();
+  ChangaSource();
+
+private:
+  int xdr_header(struct header *, XDR);
+  std::vector<std::string> m_fieldsNames;
+  unsigned int npart_total[6];
+  XDR xdrread;
+  FILE *fpread;
+  int nsph;
+  int ndark;
+  int nstar;
+  char m_dataType, m_Endian;
 };
-  
 
 #endif

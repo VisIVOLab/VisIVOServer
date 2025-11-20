@@ -17,7 +17,7 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-//#include "VisIVOImporterConfigure.h"
+// #include "VisIVOImporterConfigure.h"
 #include "changasource.h"
 
 #include "visivoutils.h"
@@ -43,285 +43,314 @@ int ChangaSource::readHeader()
 //---------------------------------------------------------------------
 
 {
-  char dummy[4]; 
-//   char checkType[4];
-  //int provided;
-  //MPI_Init_thread(0, 0, MPI_THREAD_MULTIPLE, &provided);
-  int type=0; unsigned int Npart=0;
+  char dummy[4];
+  //   char checkType[4];
+  // int provided;
+  // MPI_Init_thread(0, 0, MPI_THREAD_MULTIPLE, &provided);
+  int type = 0;
+  unsigned int Npart = 0;
   std::string systemEndianism;
-  //umBlock=0;
-  bool needSwap=false;
+  // umBlock=0;
+  bool needSwap = false;
 #ifdef VSBIGENDIAN
-  systemEndianism="big";
+  systemEndianism = "big";
 #else
-  systemEndianism="little";
+  systemEndianism = "little";
 #endif
-  if((m_endian=="b" || m_endian=="big") && systemEndianism=="little")
-    needSwap=true;
-  if((m_endian=="l" || m_endian=="little") && systemEndianism=="big")
-    needSwap=true;
-	
+  if ((m_endian == "b" || m_endian == "big") && systemEndianism == "little")
+    needSwap = true;
+  if ((m_endian == "l" || m_endian == "little") && systemEndianism == "big")
+    needSwap = true;
+
   std::string fileName = m_pointsFileName.c_str();
   std::ifstream inFile;
 
   inFile.open(fileName, std::ios::binary);
   if (!inFile)
   {
-    std::cerr<<"Error while opening File"<<std::endl;
+    std::cerr << "Error while opening File" << std::endl;
     return -1;
   }
-  //inFile.read((char *)(dummy), 4*sizeof(char)); //!*** IMPORTANT NOT REMOVE ***//
-  //inFile.read((char *)(tmpType), 4*sizeof(char));   //!*** IMPORTANT NOT REMOVE ***//
+  // inFile.read((char *)(dummy), 4*sizeof(char)); //!*** IMPORTANT NOT REMOVE ***//
+  // inFile.read((char *)(tmpType), 4*sizeof(char));   //!*** IMPORTANT NOT REMOVE ***//
 
-  //tagType=tmpType;
-  //checkType.push_back(tagType);
-  
+  // tagType=tmpType;
+  // checkType.push_back(tagType);
+
   header curHead;
   inFile.seekg(0, std::ios::beg);
   int pad;
 
-
-
-  fpread = fopen( m_pointsFileName.c_str(), "r" );
-  fread(&curHead,28,1,fpread);
+  fpread = fopen(m_pointsFileName.c_str(), "r");
+  fread(&curHead, 28, 1, fpread);
   rewind(fpread);
 
   xdrstdio_create(&xdrread, fpread, XDR_DECODE);
-  if(xdr_double(&xdrread, &((struct header *)&curHead)->time) != TRUE){
+  if (xdr_double(&xdrread, &((struct header *)&curHead)->time) != TRUE)
+  {
     return 1;
   }
-  
-  if(xdr_int(&xdrread, &((struct header *)&curHead)->nbodies) != TRUE)
+
+  if (xdr_int(&xdrread, &((struct header *)&curHead)->nbodies) != TRUE)
     return 1;
-  if(xdr_int(&xdrread, &((struct header *)&curHead)->ndim) != TRUE)
+  if (xdr_int(&xdrread, &((struct header *)&curHead)->ndim) != TRUE)
     return 1;
-  if(xdr_int(&xdrread, &((struct header *)&curHead)->nsph) != TRUE)
+  if (xdr_int(&xdrread, &((struct header *)&curHead)->nsph) != TRUE)
     return 1;
-  if(xdr_int(&xdrread, &((struct header *)&curHead)->ndark) != TRUE)
+  if (xdr_int(&xdrread, &((struct header *)&curHead)->ndark) != TRUE)
     return 1;
-  if(xdr_int(&xdrread, &((struct header *)&curHead)->nstar) != TRUE)
+  if (xdr_int(&xdrread, &((struct header *)&curHead)->nstar) != TRUE)
     return 1;
-  if(xdr_int(&xdrread, &pad) != TRUE)
+  if (xdr_int(&xdrread, &pad) != TRUE)
     return 1;
 
   nsph = curHead.nsph;
   ndark = curHead.ndark;
   nstar = curHead.nstar;
-  
+
   return 0;
 }
 
 int ChangaSource::readData()
 {
   int idx = m_pointsBinaryName.rfind('.');
-	std::string pathFileIn = m_pointsBinaryName.erase(idx, idx+4);
-	std::string pathFileOut = pathFileIn;
+  std::string pathFileIn = m_pointsBinaryName.erase(idx, idx + 4);
+  std::string pathFileOut = pathFileIn;
   std::string pathHeader;
-  //gas_particle* gasParticles = (gas_particle*) malloc(sizeof(gas_particle)*nsph);
-  std::ofstream outfile((pathFileOut + "GAS" + ".bin").c_str(),std::ofstream::binary );
-  float* gasParticles = (float*) malloc(sizeof(float)*12*nsph);
-  if (gasParticles == NULL) {
+  // gas_particle* gasParticles = (gas_particle*) malloc(sizeof(gas_particle)*nsph);
+  std::ofstream outfile((pathFileOut + "GAS" + ".bin").c_str(), std::ofstream::binary);
+  float *gasParticles = (float *)malloc(sizeof(float) * 12 * nsph);
+  if (gasParticles == NULL)
+  {
     std::clog << "Malloc Error" << std::endl;
     return 1;
   }
-  float* tmp = gasParticles;
-  for (int i=0; i<nsph; ++i) {
- // std::clog << i << std::endl;
-    xdr_vector(&xdrread,(char *) tmp, (12),
-                sizeof(float),(xdrproc_t) xdr_float);
-    tmp+=12;
+  float *tmp = gasParticles;
+  for (int i = 0; i < nsph; ++i)
+  {
+    // std::clog << i << std::endl;
+    xdr_vector(&xdrread, (char *)tmp, (12),
+               sizeof(float), (xdrproc_t)xdr_float);
+    tmp += 12;
   }
 
-  std::vector<std::string> gasBlocks; //!block fields names
-  gasBlocks.push_back("MASS"); //0
-  gasBlocks.push_back("POS_X"); //1
-  gasBlocks.push_back("POS_Y");  //2
-  gasBlocks.push_back("POS_Z");//3
-  gasBlocks.push_back("VEL_X");   //4
-  gasBlocks.push_back("VEL_y");//5
-  gasBlocks.push_back("VEL_Z"); //6
-  gasBlocks.push_back("RHO");  //7
-  gasBlocks.push_back("TEMP");  //8
-  gasBlocks.push_back("EPS");//9
-  gasBlocks.push_back("METALS"); //10
-  gasBlocks.push_back("PHI"); //11
+  std::vector<std::string> gasBlocks; //! block fields names
+  gasBlocks.push_back("MASS");        // 0
+  gasBlocks.push_back("POS_X");       // 1
+  gasBlocks.push_back("POS_Y");       // 2
+  gasBlocks.push_back("POS_Z");       // 3
+  gasBlocks.push_back("VEL_X");       // 4
+  gasBlocks.push_back("VEL_y");       // 5
+  gasBlocks.push_back("VEL_Z");       // 6
+  gasBlocks.push_back("RHO");         // 7
+  gasBlocks.push_back("TEMP");        // 8
+  gasBlocks.push_back("EPS");         // 9
+  gasBlocks.push_back("METALS");      // 10
+  gasBlocks.push_back("PHI");         // 11
 
-  if(useMemory){
-    VSTable* table = new VSTableMem();
+  if (useMemory)
+  {
+    VSTable *table = new VSTableMem();
     table->setType("float");
     table->setNumberOfRows(nsph);
-    for(const auto &blockName : gasBlocks) table->addCol(blockName);
+    for (const auto &blockName : gasBlocks)
+      table->addCol(blockName);
     memTables.push_back(table);
   }
 
-  float *bufferBlock = (float*) malloc(sizeof(float)*nsph);
-  for(int elem = 0; elem < 12; elem ++){
-    for (int part=0; part<nsph; part++) {
-      bufferBlock[part] = gasParticles[part*12 + elem];
+  float *bufferBlock = (float *)malloc(sizeof(float) * nsph);
+  for (int elem = 0; elem < 12; elem++)
+  {
+    for (int part = 0; part < nsph; part++)
+    {
+      bufferBlock[part] = gasParticles[part * 12 + elem];
     }
-    if (useMemory) {
+    if (useMemory)
+    {
       unsigned int colId = memTables[0]->getColId(gasBlocks[elem]);
-      if (colId == (unsigned int)-1) {
+      if (colId == (unsigned int)-1)
+      {
         std::cerr << "Invalid column: " << gasBlocks[elem] << std::endl;
         continue;
       }
 
       unsigned int colList[1] = {colId};
-      float* dataPtrs[1] = {bufferBlock};
+      float *dataPtrs[1] = {bufferBlock};
 
       unsigned long long globalRowStart = 0;
-      unsigned long long globalRowEnd   = nsph - 1;
+      unsigned long long globalRowEnd = nsph - 1;
       memTables[0]->putColumn(colList, 1, globalRowStart, globalRowEnd, dataPtrs);
     }
-    else {
+    else
+    {
       outfile.write((char *)(bufferBlock), sizeof(float) * nsph);
     }
   }
-  if(!useMemory){
-	  outfile.close();
-    pathHeader = pathFileOut+"GAS"+ ".bin";
-    makeHeader(nsph, pathHeader, gasBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
-  
-  
-    outfile.open((pathFileOut + "DARK" + ".bin").c_str(),std::ofstream::binary );
+  if (!useMemory)
+  {
+    outfile.close();
+    pathHeader = pathFileOut + "GAS" + ".bin";
+    makeHeader(nsph, pathHeader, gasBlocks, m_cellSize, m_cellComp, m_volumeOrTable);
+
+    outfile.open((pathFileOut + "DARK" + ".bin").c_str(), std::ofstream::binary);
   }
-  float* darkParticles = (float*) malloc(sizeof(float)*9*ndark);
-  if (darkParticles == NULL) {
+  float *darkParticles = (float *)malloc(sizeof(float) * 9 * ndark);
+  if (darkParticles == NULL)
+  {
     std::clog << "Malloc Error" << std::endl;
     return 1;
   }
-  
+
   float *tmp2 = darkParticles;
-  for (int i=0; i<ndark; ++i) {
- // std::clog << i << std::endl;
-    xdr_vector(&xdrread,(char *) tmp2, (9),
-                sizeof(float),(xdrproc_t) xdr_float);
-    tmp2+=9;
+  for (int i = 0; i < ndark; ++i)
+  {
+    // std::clog << i << std::endl;
+    xdr_vector(&xdrread, (char *)tmp2, (9),
+               sizeof(float), (xdrproc_t)xdr_float);
+    tmp2 += 9;
   }
 
+  std::vector<std::string> darkBlocks; //! block fields names
+  darkBlocks.push_back("MASS");        // 0
+  darkBlocks.push_back("POS_X");       // 1
+  darkBlocks.push_back("POS_Y");       // 2
+  darkBlocks.push_back("POS_Z");       // 3
+  darkBlocks.push_back("VEL_X");       // 4
+  darkBlocks.push_back("VEL_y");       // 5
+  darkBlocks.push_back("VEL_Z");       // 6
+  darkBlocks.push_back("EPS");         // 7
+  darkBlocks.push_back("PHI");         // 8
 
-  std::vector<std::string> darkBlocks; //!block fields names
-  darkBlocks.push_back("MASS"); //0
-  darkBlocks.push_back("POS_X"); //1
-  darkBlocks.push_back("POS_Y");  //2
-  darkBlocks.push_back("POS_Z");//3
-  darkBlocks.push_back("VEL_X");   //4
-  darkBlocks.push_back("VEL_y");//5
-  darkBlocks.push_back("VEL_Z"); //6
-  darkBlocks.push_back("EPS");//7
-  darkBlocks.push_back("PHI"); //8
-
-  if(useMemory){
-    VSTable* table = new VSTableMem();
+  if (useMemory)
+  {
+    VSTable *table = new VSTableMem();
     table->setType("float");
     table->setNumberOfRows(ndark);
-    for(const auto &blockName : darkBlocks) table->addCol(blockName);
+    for (const auto &blockName : darkBlocks)
+      table->addCol(blockName);
     memTables.push_back(table);
   }
 
-  float* bufferBlock2 = (float*) malloc(sizeof(float)*ndark);
-  for(int elem = 0; elem < 9; elem ++){
-    for (int part=0; part<ndark; part++) {
-      bufferBlock2[part] = darkParticles[part*9 + elem];
+  float *bufferBlock2 = (float *)malloc(sizeof(float) * ndark);
+  for (int elem = 0; elem < 9; elem++)
+  {
+    for (int part = 0; part < ndark; part++)
+    {
+      bufferBlock2[part] = darkParticles[part * 9 + elem];
     }
-    if (useMemory) {
+    if (useMemory)
+    {
       unsigned int colId = memTables[1]->getColId(darkBlocks[elem]);
-      if (colId == (unsigned int)-1) {
+      if (colId == (unsigned int)-1)
+      {
         std::cerr << "Invalid column: " << darkBlocks[elem] << std::endl;
         continue;
       }
 
       unsigned int colList[1] = {colId};
-      float* dataPtrs[1] = {bufferBlock};
+      float *dataPtrs[1] = {bufferBlock};
 
       unsigned long long globalRowStart = 0;
-      unsigned long long globalRowEnd   = nsph - 1;
+      unsigned long long globalRowEnd = nsph - 1;
       memTables[1]->putColumn(colList, 1, globalRowStart, globalRowEnd, dataPtrs);
     }
-    else {
+    else
+    {
       outfile.write((char *)(bufferBlock), sizeof(float) * nsph);
     }
   }
 
-  if(!useMemory){
-    pathHeader = pathFileOut+"DARK"+ ".bin";
-    makeHeader(ndark, pathHeader, darkBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
-  
-	  outfile.close();
-    
-    outfile.open((pathFileOut + "STAR" + ".bin").c_str(),std::ofstream::binary );
+  if (!useMemory)
+  {
+    pathHeader = pathFileOut + "DARK" + ".bin";
+    makeHeader(ndark, pathHeader, darkBlocks, m_cellSize, m_cellComp, m_volumeOrTable);
+
+    outfile.close();
+
+    outfile.open((pathFileOut + "STAR" + ".bin").c_str(), std::ofstream::binary);
   }
-  float* starParticles = (float*) malloc(sizeof(float)*11*nstar);
-  if (starParticles == NULL) {
+  float *starParticles = (float *)malloc(sizeof(float) * 11 * nstar);
+  if (starParticles == NULL)
+  {
     std::clog << "Malloc Error" << std::endl;
     return 1;
   }
-  
+
   float *tmp3 = starParticles;
-  for (int i=0; i<nstar; ++i) {
- // std::clog << i << std::endl;
-    xdr_vector(&xdrread,(char *) tmp3, (11),
-                sizeof(float),(xdrproc_t) xdr_float);
-    tmp3+=11;
+  for (int i = 0; i < nstar; ++i)
+  {
+    // std::clog << i << std::endl;
+    xdr_vector(&xdrread, (char *)tmp3, (11),
+               sizeof(float), (xdrproc_t)xdr_float);
+    tmp3 += 11;
   }
 
+  std::vector<std::string> starBlocks; //! block fields names
+  starBlocks.push_back("MASS");        // 0
+  starBlocks.push_back("POS_X");       // 1
+  starBlocks.push_back("POS_Y");       // 2
+  starBlocks.push_back("POS_Z");       // 3
+  starBlocks.push_back("VEL_X");       // 4
+  starBlocks.push_back("VEL_y");       // 5
+  starBlocks.push_back("VEL_Z");       // 6
+  starBlocks.push_back("METALS");      // 7
+  starBlocks.push_back("TFORM");       // 8
+  starBlocks.push_back("EPS");         // 9
+  starBlocks.push_back("PHI");         // 10
 
-  std::vector<std::string> starBlocks; //!block fields names
-  starBlocks.push_back("MASS"); //0
-  starBlocks.push_back("POS_X"); //1
-  starBlocks.push_back("POS_Y");  //2
-  starBlocks.push_back("POS_Z");//3
-  starBlocks.push_back("VEL_X");   //4
-  starBlocks.push_back("VEL_y");//5
-  starBlocks.push_back("VEL_Z"); //6
-  starBlocks.push_back("METALS");//7
-  starBlocks.push_back("TFORM"); //8
-  starBlocks.push_back("EPS");//9
-  starBlocks.push_back("PHI"); //10
-
-  if(useMemory){
-    VSTable* table = new VSTableMem();
+  if (useMemory)
+  {
+    VSTable *table = new VSTableMem();
     table->setType("float");
     table->setNumberOfRows(nstar);
-    for(const auto &blockName : starBlocks) table->addCol(blockName);
+    for (const auto &blockName : starBlocks)
+      table->addCol(blockName);
     memTables.push_back(table);
   }
 
-  float* bufferBlock3 = (float*) malloc(sizeof(float)*nstar);
-  for(int elem = 0; elem < 11; elem ++){
-    for (int part=0; part<nstar; part++) {
-      bufferBlock3[part] = starParticles[part*11 + elem];
+  float *bufferBlock3 = (float *)malloc(sizeof(float) * nstar);
+  for (int elem = 0; elem < 11; elem++)
+  {
+    for (int part = 0; part < nstar; part++)
+    {
+      bufferBlock3[part] = starParticles[part * 11 + elem];
     }
-    if (useMemory) {
+    if (useMemory)
+    {
       unsigned int colId = memTables[2]->getColId(starBlocks[elem]);
-      if (colId == (unsigned int)-1) {
+      if (colId == (unsigned int)-1)
+      {
         std::cerr << "Invalid column: " << starBlocks[elem] << std::endl;
         continue;
       }
 
       unsigned int colList[1] = {colId};
-      float* dataPtrs[1] = {bufferBlock};
+      float *dataPtrs[1] = {bufferBlock};
 
       unsigned long long globalRowStart = 0;
-      unsigned long long globalRowEnd   = nsph - 1;
+      unsigned long long globalRowEnd = nsph - 1;
       memTables[2]->putColumn(colList, 1, globalRowStart, globalRowEnd, dataPtrs);
     }
-    else {
+    else
+    {
       outfile.write((char *)(bufferBlock), sizeof(float) * nsph);
     }
   }
 
-  if(!useMemory){
-    pathHeader = pathFileOut+"STAR"+ ".bin";
-    makeHeader(nstar, pathHeader, starBlocks, m_cellSize,m_cellComp,m_volumeOrTable);
+  if (!useMemory)
+  {
+    pathHeader = pathFileOut + "STAR" + ".bin";
+    makeHeader(nstar, pathHeader, starBlocks, m_cellSize, m_cellComp, m_volumeOrTable);
   }
-	outfile.close();
-  
+  outfile.close();
+
   return 1;
 }
 
-ChangaSource::~ChangaSource() {
+ChangaSource::~ChangaSource()
+{
 }
 
-ChangaSource::ChangaSource() {
+ChangaSource::ChangaSource()
+{
 }
