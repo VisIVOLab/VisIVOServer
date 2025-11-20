@@ -23,7 +23,6 @@
 
 #include <string>
 #include <vector>
-#include <gtest/gtest.h>
 #include <vstable.h>
 #include <vstablemem.h>
 
