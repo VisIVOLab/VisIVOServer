@@ -8,8 +8,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 find_package(CFITSIO REQUIRED)
 find_package(HDF5 REQUIRED)
 find_package(CURL REQUIRED)
+find_package(ZLIB REQUIRED)
 find_package(MPI REQUIRED)
-find_package(OpenMP REQUIRED)
+
+if(APPLE)
+    message(STATUS "Configuring OpenMP for macOS (Apple Clang).")
+
+    set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp")
+    set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp")
+    set(OpenMP_C_LIB_NAMES "omp")
+    set(OpenMP_CXX_LIB_NAMES "omp")
+    set(OpenMP_omp_LIBRARY "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+    set(OpenMP_INCLUDE_DIR "/opt/homebrew/opt/libomp/include")
+    set(OpenMP_FOUND TRUE)
+else()
+    find_package(OpenMP REQUIRED)
+endif()
 
 find_package(VTK 9.1.0 REQUIRED COMPONENTS
     ChartsCore
@@ -49,8 +63,8 @@ find_package(VTK 9.1.0 REQUIRED COMPONENTS
     FiltersVerdict
     freetype
     GeovisCore
-    gl2ps
     glew
+    gl2ps
     ImagingColor
     ImagingCore
     ImagingFourier
@@ -185,8 +199,6 @@ set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/vsobject.cpp
 )
 
-find_package(HDF5 REQUIRED)
-
 add_executable(VisIVOImporter ${IMPORTER_SOURCE} ${UTILS_SOURCE})
 
 target_include_directories(VisIVOImporter PRIVATE 
@@ -194,14 +206,28 @@ target_include_directories(VisIVOImporter PRIVATE
     ${UTILS_SOURCE_DIR}
 )
 
+if(APPLE AND OpenMP_INCLUDE_DIR)
+    target_include_directories(VisIVOImporter PRIVATE ${OpenMP_INCLUDE_DIR})
+endif()
+
 target_link_libraries(VisIVOImporter PRIVATE
     CFITSIO::CFITSIO
     CURL::libcurl
+    ZLIB::ZLIB
     ${MPI_C_LIBRARIES}
-    OpenMP::OpenMP_CXX
     ${VTK_LIBRARIES}
-    stdc++fs
 )
+
+if(APPLE)
+    target_link_libraries(VisIVOImporter PRIVATE ${OpenMP_omp_LIBRARY})
+    target_compile_options(VisIVOImporter PRIVATE "-Xpreprocessor" "-fopenmp")
+else()
+    target_link_libraries(VisIVOImporter PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT APPLE)
+    target_link_libraries(VisIVOImporter PRIVATE stdc++fs)
+endif()
 
 if(HAS_CHANGA_IMPORTER)
     find_library(TIRPC_LIBRARIES
@@ -227,6 +253,9 @@ install(TARGETS VisIVOImporter DESTINATION bin)
 
 target_compile_definitions(VisIVOImporter PRIVATE LIGHT)
 
-set(CXXFLAGS  -fopenmp)
-set(CMAKE_CXX_FLAGS "${CXXFLAGS}")
 target_link_libraries(VisIVOImporter PUBLIC MPI::MPI_CXX)
+
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(VisIVOImporter PRIVATE "-stdlib=libc++")
+    target_link_options(VisIVOImporter PRIVATE "-stdlib=libc++")
+endif()

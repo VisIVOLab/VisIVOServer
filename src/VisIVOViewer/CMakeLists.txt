@@ -44,8 +44,8 @@ find_package(VTK 9.1.0 REQUIRED COMPONENTS
     FiltersVerdict
     freetype
     GeovisCore
-    gl2ps
     glew
+    gl2ps
     ImagingColor
     ImagingCore
     ImagingFourier

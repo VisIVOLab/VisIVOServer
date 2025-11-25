@@ -3,3 +3,5 @@
 .vscode
 
 Includes.mk
+CMakeCache.txt
+CMakeFiles/cmake.check_cache

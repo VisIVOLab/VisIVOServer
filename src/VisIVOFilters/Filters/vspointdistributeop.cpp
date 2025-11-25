@@ -677,15 +677,18 @@ bool VSPointDistributeOp::processCIC(VSTable& tableGrid, unsigned int* gridList,
         computeCICWeights(pos1, pos2, pos3, weights);
 
         // Linearize coordinates
+        auto linearizeIndex = [&](int k, int j, int i) -> unsigned long long {
+            return static_cast<unsigned long long>(k * jkFactor + j * jFactor + i);
+        };
         unsigned long long int ind[8] = {
-            i3 * jkFactor + i2 * jFactor + i1,
-            i3 * jkFactor + i2 * jFactor + i11,
-            i3 * jkFactor + i21 * jFactor + i1,
-            i3 * jkFactor + i21 * jFactor + i11,
-            i31 * jkFactor + i2 * jFactor + i1,
-            i31 * jkFactor + i2 * jFactor + i11,
-            i31 * jkFactor + i21 * jFactor + i1,
-            i31 * jkFactor + i21 * jFactor + i11
+            linearizeIndex(i3, i2, i1),
+            linearizeIndex(i3, i2, i11),
+            linearizeIndex(i3, i21, i1),
+            linearizeIndex(i3, i21, i11),
+            linearizeIndex(i31, i2, i1),
+            linearizeIndex(i31, i2, i11),
+            linearizeIndex(i31, i21, i1),
+            linearizeIndex(i31, i21, i11)
         };
 
         // Process density assignment
