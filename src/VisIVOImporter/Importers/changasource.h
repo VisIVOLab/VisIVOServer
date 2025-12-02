@@ -23,13 +23,14 @@
 
 #include "abstractsource.h"
 
-#include <vector>
-#include <string>
-#include <rpc/xdr.h>
 #include <rpc/rpc.h>
+#include <rpc/xdr.h>
+#include <string>
+#include <vector>
 
-struct header
-{
+enum Particle { GAS = 0, DARK = 1, STAR = 2 };
+
+struct header {
   double time;
   int nbodies;
   int ndim;
@@ -39,8 +40,7 @@ struct header
   int pad;
 };
 
-struct gas_particle
-{
+struct gas_particle {
   float mass;
   float pos[3];
   float vel[3];
@@ -51,8 +51,7 @@ struct gas_particle
   float phi;
 };
 
-struct dark_particle
-{
+struct dark_particle {
   float mass;
   float pos[3];
   float vel[3];
@@ -60,8 +59,7 @@ struct dark_particle
   float phi;
 };
 
-struct star_particle
-{
+struct star_particle {
   float mass;
   float pos[3];
   float vel[3];
@@ -79,6 +77,8 @@ public:
   int readData();
   ~ChangaSource();
   ChangaSource();
+  float *readParticles(Particle particleType);
+  int writeParticles(Particle particleType, float *particles);
 
 private:
   int xdr_header(struct header *, XDR);

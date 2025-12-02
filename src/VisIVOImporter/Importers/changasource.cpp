@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
+#include <mpio.h>
 #include <omp.h>
 #include <stdexcept>
 #include <unistd.h>
@@ -101,25 +102,48 @@ int ChangaSource::readHeader() {
   return 0;
 }
 
-int ChangaSource::readData() {
-  int idx = m_pointsBinaryName.rfind('.');
-  std::string pathFileIn = m_pointsBinaryName;
-  if (idx != std::string::npos) {
-    pathFileIn.erase(idx); // remove extension
-  }
-  std::string pathFileOut = pathFileIn;
-  std::string pathHeader;
-
-  const unsigned int gasParticleVarsNum = 12;
-  const unsigned int darkParticlesNum = 9;
-  const unsigned int starParticlesNum = 11;
-
-  MPI_Init(nullptr, nullptr);
+float *ChangaSource::readParticles(Particle particleType) {
   int size, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  std::cout << size << " " << rank;
+  int particlesNumber;
+
+  if (rank == 0) {
+    switch (particleType) {
+    case GAS:
+      particlesNumber = this->nsph;
+      break;
+    case DARK:
+      particlesNumber = this->ndark;
+      break;
+    case STAR:
+      particlesNumber = this->nstar;
+      break;
+    default:
+      break;
+    }
+  }
+
+  int particleFields;
+  std::streamoff headerSize = 8 + 6 * 4;
+
+  switch (particleType) {
+  case GAS:
+    particleFields = 12;
+    break;
+  case DARK:
+    particleFields = 9;
+    headerSize += this->nsph * 12 * sizeof(float);
+    break;
+  case STAR:
+    particleFields = 11;
+    headerSize +=
+        this->nsph * 12 * sizeof(float) + this->ndark * 9 * sizeof(float);
+    break;
+  default:
+    break;
+  }
 
   int *particlesPerRank = nullptr;
   int *displacements = nullptr;
@@ -134,15 +158,15 @@ int ChangaSource::readData() {
     displacements[0] = 0;
     displacementsVars[0] = 0;
 
-    int base = nsph / size;
-    int remainder = nsph % size;
+    int base = particlesNumber / size;
+    int remainder = particlesNumber % size;
 
     for (int i = 0; i < size; i++) {
       particlesPerRank[i] = base;
-      particlesVarsPerRank[i] = base * gasParticleVarsNum;
+      particlesVarsPerRank[i] = base * particleFields;
       if (i < remainder) {
         particlesPerRank[i] += remainder;
-        particlesVarsPerRank[i] += remainder * gasParticleVarsNum;
+        particlesVarsPerRank[i] += remainder * particleFields;
       }
       if (i > 0) {
         displacements[i] = displacements[i - 1] + particlesPerRank[i - 1];
@@ -150,81 +174,66 @@ int ChangaSource::readData() {
             displacementsVars[i - 1] + particlesVarsPerRank[i - 1];
       }
     }
-
-    std::cout << "nsph: " << nsph << endl;
-    std::cout << "base: " << base << endl;
-    std::cout << "remainder: " << remainder << endl;
-    for (int i = 0; i < size; i++) {
-      std::cout << "rank: " << i << " particles: " << particlesPerRank[i]
-                << " displacement: " << displacements[i] << endl;
-    }
   }
 
-  int *localNumGasParticlesBuffer =
-      static_cast<int *>(std::malloc(sizeof(int)));
+  int *localNumParticlesBuffer = static_cast<int *>(std::malloc(sizeof(int)));
   int *localDisplacementBuffer = static_cast<int *>(std::malloc(sizeof(int)));
 
-  MPI_Scatter(particlesPerRank, 1, MPI_INT, localNumGasParticlesBuffer, 1,
-              MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Scatter(particlesPerRank, 1, MPI_INT, localNumParticlesBuffer, 1, MPI_INT,
+              0, MPI_COMM_WORLD);
   MPI_Scatter(displacements, 1, MPI_INT, localDisplacementBuffer, 1, MPI_INT, 0,
               MPI_COMM_WORLD);
 
-  int localNumGasParticles = localNumGasParticlesBuffer[0];
+  int localNumParticles = localNumParticlesBuffer[0];
   int localDisplacement = localDisplacementBuffer[0];
 
-  std::cout << "rank: " << rank << " local num: " << localNumGasParticles
-            << " local displacement: " << localDisplacement << endl;
-
-  float *localGasParticles = (float *)std::malloc(
-      sizeof(float) * gasParticleVarsNum * localNumGasParticles);
+  float *localGasParticles =
+      (float *)std::malloc(sizeof(float) * particleFields * localNumParticles);
 
   // Each process opens the same file
   std::ifstream inFile(m_pointsFileName, std::ios::binary);
   if (!inFile) {
     std::cerr << "Error while opening file in readData: " << m_pointsFileName
               << std::endl;
-    return 1;
+    return nullptr;
   }
 
   // Skip header
-  const std::streamoff headerSize = 8 + 6 * 4; // double + 6 ints = 32 bytes
   inFile.seekg(headerSize, std::ios::beg);
   if (!inFile) {
     std::cerr << "Failed to seek to particle data";
-    return 1;
+    return nullptr;
   }
 
   // Offsets to local displacement
-  inFile.seekg(localDisplacement * gasParticleVarsNum * sizeof(float),
+  inFile.seekg(localDisplacement * particleFields * sizeof(float),
                std::ios_base::cur);
 
-  for (int i = 0; i < localNumGasParticles; ++i) {
-    for (int k = 0; k < gasParticleVarsNum; ++k) {
-      localGasParticles[i * gasParticleVarsNum + k] = readFloatBE(inFile);
+  for (int i = 0; i < localNumParticles; ++i) {
+    for (int k = 0; k < particleFields; ++k) {
+      localGasParticles[i * particleFields + k] = readFloatBE(inFile);
     }
   }
 
-  inFile.close();
-
-  float *gasParticles = nullptr;
+  float *particles = nullptr;
 
   if (rank == 0) {
-    if (nsph > 0) {
-      gasParticles = static_cast<float *>(
-          std::malloc(sizeof(float) * gasParticleVarsNum * nsph));
-      if (!gasParticles) {
-        std::clog << "Malloc Error for gasParticles" << std::endl;
-        return 1;
+    if (particlesNumber > 0) {
+      particles = static_cast<float *>(
+          std::malloc(sizeof(float) * particleFields * particlesNumber));
+      if (!particles) {
+        std::clog << "Malloc Error for particles" << std::endl;
+        return nullptr;
       }
     }
   }
 
-  MPI_Gatherv(localGasParticles, localNumGasParticles * gasParticleVarsNum,
-              MPI_FLOAT, gasParticles, particlesVarsPerRank, displacementsVars,
-              MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(localGasParticles, localNumParticles * particleFields, MPI_FLOAT,
+              particles, particlesVarsPerRank, displacementsVars, MPI_FLOAT, 0,
+              MPI_COMM_WORLD);
 
-  free(localNumGasParticlesBuffer);
-  localNumGasParticlesBuffer = nullptr;
+  free(localNumParticlesBuffer);
+  localNumParticlesBuffer = nullptr;
   free(localDisplacementBuffer);
   localDisplacementBuffer = nullptr;
   free(localGasParticles);
@@ -240,62 +249,209 @@ int ChangaSource::readData() {
     displacementsVars = nullptr;
   }
 
-  MPI_Finalize();
+  inFile.close();
 
-  inFile.open(m_pointsFileName, std::ios::binary);
-  if (!inFile.is_open()) {
-    std::cerr << "Error while opening file in readData: " << m_pointsFileName
-              << std::endl;
-    return 1;
+  if (rank == 0)
+    return particles;
+
+  return nullptr;
+}
+
+int ChangaSource::writeParticles(Particle particleType, float *particles) {
+  int size, rank;
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  int particlesNumber;
+  int particleId;
+  int particleFields;
+  std::string particleStartPath;
+
+  if (rank == 0) {
+    switch (particleType) {
+    case GAS:
+      particlesNumber = this->nsph;
+      break;
+    case DARK:
+      particlesNumber = this->ndark;
+      break;
+    case STAR:
+      particlesNumber = this->nstar;
+      break;
+    default:
+      break;
+    }
   }
 
-  std::vector<std::string> gasBlocks;
-  gasBlocks.push_back("MASS");   // 0
-  gasBlocks.push_back("POS_X");  // 1
-  gasBlocks.push_back("POS_Y");  // 2
-  gasBlocks.push_back("POS_Z");  // 3
-  gasBlocks.push_back("VEL_X");  // 4
-  gasBlocks.push_back("VEL_Y");  // 5
-  gasBlocks.push_back("VEL_Z");  // 6
-  gasBlocks.push_back("RHO");    // 7
-  gasBlocks.push_back("TEMP");   // 8
-  gasBlocks.push_back("EPS");    // 9
-  gasBlocks.push_back("METALS"); // 10
-  gasBlocks.push_back("PHI");    // 11
+  switch (particleType) {
+  case GAS:
+    particleId = 0;
+    particleFields = 12;
+    particleStartPath = "GAS";
+    break;
+  case DARK:
+    particleId = 1;
+    particleFields = 9;
+    particleStartPath = "DARK";
+    break;
+  case STAR:
+    particleId = 2;
+    particleFields = 11;
+    particleStartPath = "STAR";
+    break;
+  default:
+    break;
+  }
 
-  std::ofstream outfile;
+  int *particlesPerRank = nullptr;
+  int *displacements = nullptr;
+  int *particlesVarsPerRank = nullptr;
+  int *displacementsVars = nullptr;
+
+  if (rank == 0) {
+    particlesPerRank = static_cast<int *>(std::malloc(sizeof(int) * size));
+    displacements = static_cast<int *>(std::malloc(sizeof(int) * size));
+    particlesVarsPerRank = static_cast<int *>(std::malloc(sizeof(int) * size));
+    displacementsVars = static_cast<int *>(std::malloc(sizeof(int) * size));
+    displacements[0] = 0;
+    displacementsVars[0] = 0;
+
+    int base = particlesNumber / size;
+    int remainder = particlesNumber % size;
+
+    for (int i = 0; i < size; i++) {
+      particlesPerRank[i] = base;
+      particlesVarsPerRank[i] = base * particleFields;
+      if (i < remainder) {
+        particlesPerRank[i] += remainder;
+        particlesVarsPerRank[i] += remainder * particleFields;
+      }
+      if (i > 0) {
+        displacements[i] = displacements[i - 1] + particlesPerRank[i - 1];
+        displacementsVars[i] =
+            displacementsVars[i - 1] + particlesVarsPerRank[i - 1];
+      }
+    }
+
+    std::cout << "particles number: " << particlesNumber << endl;
+    std::cout << "base: " << base << endl;
+    std::cout << "remainder: " << remainder << endl;
+    for (int i = 0; i < size; i++) {
+      std::cout << "rank: " << i << " particles: " << particlesPerRank[i]
+                << " displacement: " << displacements[i] << endl;
+    }
+  }
+
+  int *localNumParticlesBuffer = static_cast<int *>(std::malloc(sizeof(int)));
+  int *localDisplacementBuffer = static_cast<int *>(std::malloc(sizeof(int)));
+
+  MPI_Scatter(particlesPerRank, 1, MPI_INT, localNumParticlesBuffer, 1, MPI_INT,
+              0, MPI_COMM_WORLD);
+  MPI_Scatter(displacements, 1, MPI_INT, localDisplacementBuffer, 1, MPI_INT, 0,
+              MPI_COMM_WORLD);
+
+  int localNumParticles = localNumParticlesBuffer[0];
+  int localDisplacement = localDisplacementBuffer[0];
+
+  std::cout << "rank: " << rank << " local num: " << localNumParticles
+            << " local displacement: " << localDisplacement << endl;
+
+  float *localParticles =
+      (float *)malloc(localNumParticles * particleFields * sizeof(float));
+
+  MPI_Scatterv(particles, particlesVarsPerRank, displacementsVars, MPI_FLOAT,
+               localParticles, localNumParticles * particleFields, MPI_FLOAT, 0,
+               MPI_COMM_WORLD);
+
+  int idx = m_pointsBinaryName.rfind('.');
+  std::string pathFileIn = m_pointsBinaryName;
+  if (idx != std::string::npos) {
+    pathFileIn.erase(idx); // remove extension
+  }
+
+  std::string pathFileOut = pathFileIn;
+  std::string pathHeader;
+
+  std::vector<std::string> blocks;
+
+  blocks.push_back("MASS");
+  blocks.push_back("POS_X");
+  blocks.push_back("POS_Y");
+  blocks.push_back("POS_Z");
+  blocks.push_back("VEL_X");
+  blocks.push_back("VEL_Y");
+  blocks.push_back("VEL_Z");
+  switch (particleType) {
+  case GAS:
+    blocks.push_back("RHO");
+    blocks.push_back("TEMP");
+    blocks.push_back("EPS");
+    blocks.push_back("METALS");
+    blocks.push_back("PHI");
+    break;
+  case DARK:
+    blocks.push_back("EPS");
+    blocks.push_back("PHI");
+    break;
+  case STAR:
+    blocks.push_back("METALS");
+    blocks.push_back("TFORM");
+    blocks.push_back("EPS");
+    break;
+  default:
+    break;
+  }
+  blocks.push_back("PHI");
+
+  MPI_Offset fileOffset;
+  int tableOffset;
+  MPI_File fh;
+  int amode;
+  amode = MPI_MODE_CREATE | MPI_MODE_RDWR;
+  MPI_Status status;
+  int code;
+
   if (!useMemory) {
-    outfile.open((pathFileOut + "GAS" + ".bin").c_str(), std::ofstream::binary);
-    if (!outfile) {
-      std::cerr << "Failed to open GAS.bin for writing" << std::endl;
+    code = MPI_File_open(MPI_COMM_WORLD,
+                         (pathFileOut + particleStartPath + ".bin").c_str(),
+                         amode, MPI_INFO_NULL, &fh);
+    if (code != MPI_SUCCESS) {
+      std::cerr << "Failed to open " << particleStartPath << ".bin for writing"
+                << std::endl;
+      MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
       return 1;
     }
+    fileOffset = localDisplacement * particleFields * sizeof(float);
+    MPI_File_seek(fh, fileOffset, MPI_SEEK_SET);
+    std::cout << "rank: " << rank << " file offset: " << fileOffset << endl;
+
   } else {
     VSTable *table = new VSTableMem();
     table->setType("float");
-    table->setNumberOfRows(nsph);
-    for (const auto &blockName : gasBlocks)
+    table->setNumberOfRows(localNumParticles);
+    for (const auto &blockName : blocks)
       table->addCol(blockName);
-    memTables.push_back(table);
+    tableOffset = rank + (particleId * 3) + particleId;
+    memTables.insert(memTables.begin() + tableOffset, table);
   }
 
-  if (nsph > 0 && gasParticles) {
+  if (localNumParticles > 0 && localParticles) {
     float *bufferBlock =
-        static_cast<float *>(std::malloc(sizeof(float) * nsph));
+        static_cast<float *>(std::malloc(sizeof(float) * localNumParticles));
     if (!bufferBlock) {
       std::cerr << "Malloc Error for bufferBlock (gas)" << std::endl;
       return 1;
     }
 
-    for (int elem = 0; elem < 12; ++elem) {
-      for (int part = 0; part < nsph; ++part) {
-        bufferBlock[part] = gasParticles[part * 12 + elem];
+    for (int elem = 0; elem < particleFields; ++elem) {
+      for (int part = 0; part < localNumParticles; ++part) {
+        bufferBlock[part] = localParticles[part * particleFields + elem];
       }
 
       if (useMemory) {
-        unsigned int colId = memTables[0]->getColId(gasBlocks[elem]);
+        unsigned int colId = memTables[tableOffset]->getColId(blocks[elem]);
         if (colId == static_cast<unsigned int>(-1)) {
-          std::cerr << "Invalid column: " << gasBlocks[elem] << std::endl;
+          std::cerr << "Invalid column: " << blocks[elem] << std::endl;
           continue;
         }
 
@@ -304,215 +460,60 @@ int ChangaSource::readData() {
 
         unsigned long long globalRowStart = 0;
         unsigned long long globalRowEnd =
-            static_cast<unsigned long long>(nsph) - 1;
-        memTables[0]->putColumn(colList, 1, globalRowStart, globalRowEnd,
-                                dataPtrs);
+            static_cast<unsigned long long>(localNumParticles) - 1;
+        memTables[tableOffset]->putColumn(colList, 1, globalRowStart,
+                                          globalRowEnd, dataPtrs);
       } else {
-        outfile.write(reinterpret_cast<char *>(bufferBlock),
-                      sizeof(float) * nsph);
+        MPI_File_write(fh, reinterpret_cast<char *>(bufferBlock),
+                       localNumParticles, MPI_FLOAT, &status);
       }
     }
 
     std::free(bufferBlock);
+    bufferBlock = NULL;
   }
 
   if (!useMemory) {
-    outfile.close();
-    pathHeader = pathFileOut + "GAS" + ".bin";
-    makeHeader(nsph, pathHeader, gasBlocks, m_cellSize, m_cellComp,
-               m_volumeOrTable);
-  }
-
-  if (gasParticles)
-    std::free(gasParticles);
-
-  // -----------------------------
-  // DARK PARTICLES (9 floats)
-  // -----------------------------
-  float *darkParticles = nullptr;
-  if (ndark > 0) {
-    darkParticles =
-        static_cast<float *>(std::malloc(sizeof(float) * 9 * ndark));
-    if (!darkParticles) {
-      std::clog << "Malloc Error for darkParticles" << std::endl;
-      return 1;
-    }
-
-    for (int i = 0; i < ndark; ++i) {
-      for (int k = 0; k < 9; ++k) {
-        darkParticles[i * 9 + k] = readFloatBE(inFile);
-      }
+    MPI_File_close(&fh);
+    if (rank == 0) {
+      pathHeader = pathFileOut + particleStartPath + ".bin";
+      makeHeader(particlesNumber, pathHeader, blocks, m_cellSize, m_cellComp,
+                 m_volumeOrTable);
     }
   }
 
-  std::vector<std::string> darkBlocks;
-  darkBlocks.push_back("MASS");  // 0
-  darkBlocks.push_back("POS_X"); // 1
-  darkBlocks.push_back("POS_Y"); // 2
-  darkBlocks.push_back("POS_Z"); // 3
-  darkBlocks.push_back("VEL_X"); // 4
-  darkBlocks.push_back("VEL_y"); // 5
-  darkBlocks.push_back("VEL_Z"); // 6
-  darkBlocks.push_back("EPS");   // 7
-  darkBlocks.push_back("PHI");   // 8
+  return 0;
+}
 
-  if (!useMemory) {
-    outfile.open((pathFileOut + "DARK" + ".bin").c_str(),
-                 std::ofstream::binary);
-    if (!outfile) {
-      std::cerr << "Failed to open DARK.bin for writing" << std::endl;
-      return 1;
-    }
-  } else {
-    VSTable *table = new VSTableMem();
-    table->setType("float");
-    table->setNumberOfRows(ndark);
-    for (const auto &blockName : darkBlocks)
-      table->addCol(blockName);
-    memTables.push_back(table);
+int ChangaSource::readData() {
+  MPI_Init(nullptr, nullptr);
+  int rank, size;
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  if (rank == 0) {
+    memTables.reserve(size * 3);
   }
 
-  if (ndark > 0 && darkParticles) {
-    float *bufferBlock2 =
-        static_cast<float *>(std::malloc(sizeof(float) * ndark));
-    if (!bufferBlock2) {
-      std::cerr << "Malloc Error for bufferBlock (dark)" << std::endl;
-      return 1;
-    }
+  float *gasParticles = readParticles(GAS);
+  writeParticles(GAS, gasParticles);
 
-    for (int elem = 0; elem < 9; ++elem) {
-      for (int part = 0; part < ndark; ++part) {
-        bufferBlock2[part] = darkParticles[part * 9 + elem];
-      }
+  // float *darkParticles = readParticles(DARK);
+  // writeParticles(DARK, darkParticles);
 
-      if (useMemory) {
-        unsigned int colId = memTables[1]->getColId(darkBlocks[elem]);
-        if (colId == static_cast<unsigned int>(-1)) {
-          std::cerr << "Invalid column: " << darkBlocks[elem] << std::endl;
-          continue;
-        }
+  // float *starParticles = readParticles(STAR);
+  // writeParticles(STAR, starParticles);
 
-        unsigned int colList[1] = {colId};
-        float *dataPtrs[1] = {bufferBlock2};
-        unsigned long long globalRowStart = 0;
-        unsigned long long globalRowEnd =
-            static_cast<unsigned long long>(ndark) - 1;
-        memTables[1]->putColumn(colList, 1, globalRowStart, globalRowEnd,
-                                dataPtrs);
-      } else {
-        outfile.write(reinterpret_cast<char *>(bufferBlock2),
-                      sizeof(float) * ndark);
-      }
-    }
-
-    std::free(bufferBlock2);
+  if (rank == 0) {
+    free(gasParticles);
+    // free(darkParticles);
+    // free(starParticles);
+    gasParticles = NULL;
+    // darkParticles = NULL;
+    // starParticles = NULL;
   }
 
-  if (!useMemory) {
-    outfile.close();
-    pathHeader = pathFileOut + "DARK" + ".bin";
-    makeHeader(ndark, pathHeader, darkBlocks, m_cellSize, m_cellComp,
-               m_volumeOrTable);
-  }
-
-  if (darkParticles)
-    std::free(darkParticles);
-
-  // -----------------------------
-  // STAR PARTICLES (11 floats)
-  // -----------------------------
-  float *starParticles = nullptr;
-  if (nstar > 0) {
-    starParticles =
-        static_cast<float *>(std::malloc(sizeof(float) * 11 * nstar));
-    if (!starParticles) {
-      std::clog << "Malloc Error for starParticles" << std::endl;
-      return 1;
-    }
-    for (int i = 0; i < nstar; ++i) {
-      for (int k = 0; k < 11; ++k) {
-        starParticles[i * 11 + k] = readFloatBE(inFile);
-      }
-    }
-  }
-
-  std::vector<std::string> starBlocks;
-  starBlocks.push_back("MASS");   // 0
-  starBlocks.push_back("POS_X");  // 1
-  starBlocks.push_back("POS_Y");  // 2
-  starBlocks.push_back("POS_Z");  // 3
-  starBlocks.push_back("VEL_X");  // 4
-  starBlocks.push_back("VEL_y");  // 5
-  starBlocks.push_back("VEL_Z");  // 6
-  starBlocks.push_back("METALS"); // 7
-  starBlocks.push_back("TFORM");  // 8
-  starBlocks.push_back("EPS");    // 9
-  starBlocks.push_back("PHI");    // 10
-
-  if (!useMemory) {
-    outfile.open((pathFileOut + "STAR" + ".bin").c_str(),
-                 std::ofstream::binary);
-    if (!outfile) {
-      std::cerr << "Failed to open STAR.bin for writing" << std::endl;
-      return 1;
-    }
-  } else {
-    VSTable *table = new VSTableMem();
-    table->setType("float");
-    table->setNumberOfRows(nstar);
-    for (const auto &blockName : starBlocks)
-      table->addCol(blockName);
-    memTables.push_back(table); // index 2 for STAR
-  }
-
-  if (nstar > 0 && starParticles) {
-    float *bufferBlock3 =
-        static_cast<float *>(std::malloc(sizeof(float) * nstar));
-    if (!bufferBlock3) {
-      std::cerr << "Malloc Error for bufferBlock3 (star)" << std::endl;
-      return 1;
-    }
-
-    for (int elem = 0; elem < 11; ++elem) {
-      for (int part = 0; part < nstar; ++part) {
-        bufferBlock3[part] = starParticles[part * 11 + elem];
-      }
-
-      if (useMemory) {
-        unsigned int colId = memTables[2]->getColId(starBlocks[elem]);
-        if (colId == static_cast<unsigned int>(-1)) {
-          std::cerr << "Invalid column: " << starBlocks[elem] << std::endl;
-          continue;
-        }
-
-        unsigned int colList[1] = {colId};
-        float *dataPtrs[1] = {bufferBlock3};
-
-        unsigned long long globalRowStart = 0;
-        unsigned long long globalRowEnd =
-            static_cast<unsigned long long>(nstar) - 1;
-        memTables[2]->putColumn(colList, 1, globalRowStart, globalRowEnd,
-                                dataPtrs);
-      } else {
-        outfile.write(reinterpret_cast<char *>(bufferBlock3),
-                      sizeof(float) * nstar);
-      }
-    }
-
-    std::free(bufferBlock3);
-  }
-
-  if (!useMemory) {
-    outfile.close();
-    pathHeader = pathFileOut + "STAR" + ".bin";
-    makeHeader(nstar, pathHeader, starBlocks, m_cellSize, m_cellComp,
-               m_volumeOrTable);
-  }
-
-  if (starParticles)
-    std::free(starParticles);
-
-  inFile.close();
+  MPI_Finalize();
 
   return 0;
 }
