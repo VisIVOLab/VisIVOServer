@@ -165,8 +165,8 @@ float *ChangaSource::readParticles(Particle particleType) {
       particlesPerRank[i] = base;
       particlesVarsPerRank[i] = base * particleFields;
       if (i < remainder) {
-        particlesPerRank[i] += remainder;
-        particlesVarsPerRank[i] += remainder * particleFields;
+        particlesPerRank[i] += 1;
+        particlesVarsPerRank[i] += particleFields;
       }
       if (i > 0) {
         displacements[i] = displacements[i - 1] + particlesPerRank[i - 1];
@@ -261,43 +261,31 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
   int size, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Status status;
 
   int particlesNumber;
   int particleId;
   int particleFields;
   std::string particleStartPath;
 
-  if (rank == 0) {
-    switch (particleType) {
-    case GAS:
-      particlesNumber = this->nsph;
-      break;
-    case DARK:
-      particlesNumber = this->ndark;
-      break;
-    case STAR:
-      particlesNumber = this->nstar;
-      break;
-    default:
-      break;
-    }
-  }
-
   switch (particleType) {
   case GAS:
     particleId = 0;
     particleFields = 12;
     particleStartPath = "GAS";
+    particlesNumber = this->nsph;
     break;
   case DARK:
     particleId = 1;
     particleFields = 9;
     particleStartPath = "DARK";
+    particlesNumber = this->ndark;
     break;
   case STAR:
     particleId = 2;
     particleFields = 11;
     particleStartPath = "STAR";
+    particlesNumber = this->nstar;
     break;
   default:
     break;
@@ -323,8 +311,8 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
       particlesPerRank[i] = base;
       particlesVarsPerRank[i] = base * particleFields;
       if (i < remainder) {
-        particlesPerRank[i] += remainder;
-        particlesVarsPerRank[i] += remainder * particleFields;
+        particlesPerRank[i] += 1;
+        particlesVarsPerRank[i] += particleFields;
       }
       if (i > 0) {
         displacements[i] = displacements[i - 1] + particlesPerRank[i - 1];
@@ -353,15 +341,16 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
   int localNumParticles = localNumParticlesBuffer[0];
   int localDisplacement = localDisplacementBuffer[0];
 
-  std::cout << "rank: " << rank << " local num: " << localNumParticles
-            << " local displacement: " << localDisplacement << endl;
-
   float *localParticles =
       (float *)malloc(localNumParticles * particleFields * sizeof(float));
 
   MPI_Scatterv(particles, particlesVarsPerRank, displacementsVars, MPI_FLOAT,
                localParticles, localNumParticles * particleFields, MPI_FLOAT, 0,
                MPI_COMM_WORLD);
+
+  std::cout << "rank: " << rank << " local num: " << localNumParticles
+            << " local displacement: " << localDisplacement
+            << " total number: " << particlesNumber << endl;
 
   int idx = m_pointsBinaryName.rfind('.');
   std::string pathFileIn = m_pointsBinaryName;
@@ -374,15 +363,15 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
 
   std::vector<std::string> blocks;
 
-  blocks.push_back("MASS");
-  blocks.push_back("POS_X");
-  blocks.push_back("POS_Y");
-  blocks.push_back("POS_Z");
-  blocks.push_back("VEL_X");
-  blocks.push_back("VEL_Y");
-  blocks.push_back("VEL_Z");
   switch (particleType) {
   case GAS:
+    blocks.push_back("MASS");
+    blocks.push_back("POS_X");
+    blocks.push_back("POS_Y");
+    blocks.push_back("POS_Z");
+    blocks.push_back("VEL_X");
+    blocks.push_back("VEL_y");
+    blocks.push_back("VEL_Z");
     blocks.push_back("RHO");
     blocks.push_back("TEMP");
     blocks.push_back("EPS");
@@ -390,25 +379,38 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
     blocks.push_back("PHI");
     break;
   case DARK:
+    blocks.push_back("MASS");
+    blocks.push_back("POS_X");
+    blocks.push_back("POS_Y");
+    blocks.push_back("POS_Z");
+    blocks.push_back("VEL_X");
+    blocks.push_back("VEL_Y");
+    blocks.push_back("VEL_Z");
     blocks.push_back("EPS");
     blocks.push_back("PHI");
     break;
   case STAR:
+    blocks.push_back("MASS");
+    blocks.push_back("POS_X");
+    blocks.push_back("POS_Y");
+    blocks.push_back("POS_Z");
+    blocks.push_back("VEL_X");
+    blocks.push_back("VEL_Y");
+    blocks.push_back("VEL_Z");
     blocks.push_back("METALS");
     blocks.push_back("TFORM");
     blocks.push_back("EPS");
+    blocks.push_back("PHI");
     break;
   default:
     break;
   }
-  blocks.push_back("PHI");
 
   MPI_Offset fileOffset;
   int tableOffset;
   MPI_File fh;
   int amode;
   amode = MPI_MODE_CREATE | MPI_MODE_RDWR;
-  MPI_Status status;
   int code;
 
   if (!useMemory) {
@@ -421,9 +423,6 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
       MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
       return 1;
     }
-    fileOffset = localDisplacement * particleFields * sizeof(float);
-    MPI_File_seek(fh, fileOffset, MPI_SEEK_SET);
-    std::cout << "rank: " << rank << " file offset: " << fileOffset << endl;
 
   } else {
     VSTable *table = new VSTableMem();
@@ -439,19 +438,20 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
     float *bufferBlock =
         static_cast<float *>(std::malloc(sizeof(float) * localNumParticles));
     if (!bufferBlock) {
-      std::cerr << "Malloc Error for bufferBlock (gas)" << std::endl;
+      std::cerr << "Malloc Error for bufferBlock" << std::endl;
       return 1;
     }
 
-    for (int elem = 0; elem < particleFields; ++elem) {
-      for (int part = 0; part < localNumParticles; ++part) {
-        bufferBlock[part] = localParticles[part * particleFields + elem];
+    for (int field = 0; field < particleFields; ++field) {
+      for (int particle = 0; particle < localNumParticles; ++particle) {
+        bufferBlock[particle] =
+            localParticles[particle * particleFields + field];
       }
 
       if (useMemory) {
-        unsigned int colId = memTables[tableOffset]->getColId(blocks[elem]);
+        unsigned int colId = memTables[tableOffset]->getColId(blocks[field]);
         if (colId == static_cast<unsigned int>(-1)) {
-          std::cerr << "Invalid column: " << blocks[elem] << std::endl;
+          std::cerr << "Invalid column: " << blocks[field] << std::endl;
           continue;
         }
 
@@ -464,8 +464,12 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
         memTables[tableOffset]->putColumn(colList, 1, globalRowStart,
                                           globalRowEnd, dataPtrs);
       } else {
-        MPI_File_write(fh, reinterpret_cast<char *>(bufferBlock),
-                       localNumParticles, MPI_FLOAT, &status);
+        fileOffset =
+            (field * particlesNumber + localDisplacement) * sizeof(float);
+        std::cout << "rank: " << rank << " file offset: " << fileOffset << endl;
+
+        MPI_File_write_at(fh, fileOffset, bufferBlock, localNumParticles,
+                          MPI_FLOAT, &status);
       }
     }
 
@@ -480,6 +484,23 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
       makeHeader(particlesNumber, pathHeader, blocks, m_cellSize, m_cellComp,
                  m_volumeOrTable);
     }
+  }
+
+  free(localNumParticlesBuffer);
+  localNumParticlesBuffer = nullptr;
+  free(localDisplacementBuffer);
+  localDisplacementBuffer = nullptr;
+  free(localParticles);
+  localParticles = nullptr;
+  if (rank == 0) {
+    free(particlesPerRank);
+    particlesPerRank = nullptr;
+    free(particlesVarsPerRank);
+    particlesVarsPerRank = nullptr;
+    free(displacements);
+    displacements = nullptr;
+    free(displacementsVars);
+    displacementsVars = nullptr;
   }
 
   return 0;
