@@ -187,7 +187,7 @@ float *ChangaSource::readParticles(Particle particleType) {
   int localNumParticles = localNumParticlesBuffer[0];
   int localDisplacement = localDisplacementBuffer[0];
 
-  float *localGasParticles =
+  float *localParticles =
       (float *)std::malloc(sizeof(float) * particleFields * localNumParticles);
 
   // Each process opens the same file
@@ -211,7 +211,7 @@ float *ChangaSource::readParticles(Particle particleType) {
 
   for (int i = 0; i < localNumParticles; ++i) {
     for (int k = 0; k < particleFields; ++k) {
-      localGasParticles[i * particleFields + k] = readFloatBE(inFile);
+      localParticles[i * particleFields + k] = readFloatBE(inFile);
     }
   }
 
@@ -228,7 +228,7 @@ float *ChangaSource::readParticles(Particle particleType) {
     }
   }
 
-  MPI_Gatherv(localGasParticles, localNumParticles * particleFields, MPI_FLOAT,
+  MPI_Gatherv(localParticles, localNumParticles * particleFields, MPI_FLOAT,
               particles, particlesVarsPerRank, displacementsVars, MPI_FLOAT, 0,
               MPI_COMM_WORLD);
 
@@ -236,8 +236,8 @@ float *ChangaSource::readParticles(Particle particleType) {
   localNumParticlesBuffer = nullptr;
   free(localDisplacementBuffer);
   localDisplacementBuffer = nullptr;
-  free(localGasParticles);
-  localGasParticles = nullptr;
+  free(localParticles);
+  localParticles = nullptr;
   if (rank == 0) {
     free(particlesPerRank);
     particlesPerRank = nullptr;
@@ -320,14 +320,6 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
             displacementsVars[i - 1] + particlesVarsPerRank[i - 1];
       }
     }
-
-    std::cout << "particles number: " << particlesNumber << endl;
-    std::cout << "base: " << base << endl;
-    std::cout << "remainder: " << remainder << endl;
-    for (int i = 0; i < size; i++) {
-      std::cout << "rank: " << i << " particles: " << particlesPerRank[i]
-                << " displacement: " << displacements[i] << endl;
-    }
   }
 
   int *localNumParticlesBuffer = static_cast<int *>(std::malloc(sizeof(int)));
@@ -347,10 +339,6 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
   MPI_Scatterv(particles, particlesVarsPerRank, displacementsVars, MPI_FLOAT,
                localParticles, localNumParticles * particleFields, MPI_FLOAT, 0,
                MPI_COMM_WORLD);
-
-  std::cout << "rank: " << rank << " local num: " << localNumParticles
-            << " local displacement: " << localDisplacement
-            << " total number: " << particlesNumber << endl;
 
   int idx = m_pointsBinaryName.rfind('.');
   std::string pathFileIn = m_pointsBinaryName;
@@ -384,7 +372,7 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
     blocks.push_back("POS_Y");
     blocks.push_back("POS_Z");
     blocks.push_back("VEL_X");
-    blocks.push_back("VEL_Y");
+    blocks.push_back("VEL_y");
     blocks.push_back("VEL_Z");
     blocks.push_back("EPS");
     blocks.push_back("PHI");
@@ -395,7 +383,7 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
     blocks.push_back("POS_Y");
     blocks.push_back("POS_Z");
     blocks.push_back("VEL_X");
-    blocks.push_back("VEL_Y");
+    blocks.push_back("VEL_y");
     blocks.push_back("VEL_Z");
     blocks.push_back("METALS");
     blocks.push_back("TFORM");
@@ -466,7 +454,6 @@ int ChangaSource::writeParticles(Particle particleType, float *particles) {
       } else {
         fileOffset =
             (field * particlesNumber + localDisplacement) * sizeof(float);
-        std::cout << "rank: " << rank << " file offset: " << fileOffset << endl;
 
         MPI_File_write_at(fh, fileOffset, bufferBlock, localNumParticles,
                           MPI_FLOAT, &status);
@@ -519,19 +506,19 @@ int ChangaSource::readData() {
   float *gasParticles = readParticles(GAS);
   writeParticles(GAS, gasParticles);
 
-  // float *darkParticles = readParticles(DARK);
-  // writeParticles(DARK, darkParticles);
+  float *darkParticles = readParticles(DARK);
+  writeParticles(DARK, darkParticles);
 
-  // float *starParticles = readParticles(STAR);
-  // writeParticles(STAR, starParticles);
+  float *starParticles = readParticles(STAR);
+  writeParticles(STAR, starParticles);
 
   if (rank == 0) {
     free(gasParticles);
-    // free(darkParticles);
-    // free(starParticles);
+    free(darkParticles);
+    free(starParticles);
     gasParticles = NULL;
-    // darkParticles = NULL;
-    // starParticles = NULL;
+    darkParticles = NULL;
+    starParticles = NULL;
   }
 
   MPI_Finalize();
