@@ -505,19 +505,22 @@ int ChangaSource::readData() {
 
   float *gasParticles = readParticles(GAS);
   writeParticles(GAS, gasParticles);
+  if (rank == 0) {
+    free(gasParticles);
+    gasParticles = NULL;
+  }
 
   float *darkParticles = readParticles(DARK);
   writeParticles(DARK, darkParticles);
+  if (rank == 0) {
+    free(darkParticles);
+    darkParticles = NULL;
+  }
 
   float *starParticles = readParticles(STAR);
   writeParticles(STAR, starParticles);
-
   if (rank == 0) {
-    free(gasParticles);
-    free(darkParticles);
     free(starParticles);
-    gasParticles = NULL;
-    darkParticles = NULL;
     starParticles = NULL;
   }
 
