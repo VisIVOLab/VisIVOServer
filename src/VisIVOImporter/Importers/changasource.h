@@ -69,23 +69,27 @@ struct star_particle {
   float phi;
 };
 
-class ChangaSource : public AbstractSource
+typedef struct {
+  int localNumParticles;
+  int localDisplacement;
+} mpiProcessInfo;
 
-{
+class ChangaSource : public AbstractSource {
 public:
   int readHeader();
   int readData();
   ~ChangaSource();
   ChangaSource();
-  float *readParticles(Particle particleType);
-  int writeParticles(Particle particleType, float *particles);
+  std::vector<mpiProcessInfo> distributeInfo();
+  int elaborateParticles(std::vector<mpiProcessInfo> info,
+                         Particle particleType);
 
 private:
   int xdr_header(struct header *, XDR);
   std::vector<std::string> m_fieldsNames;
   unsigned int npart_total[6];
-  XDR xdrread;
   FILE *fpread;
+  const int typesOfParticle = 3;
   int nsph;
   int ndark;
   int nstar;
