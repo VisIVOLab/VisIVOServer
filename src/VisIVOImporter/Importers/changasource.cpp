@@ -311,14 +311,12 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
   }
 
   if (useMemory) {
-    std::cout << "rank: " << rank << " about to create table" << endl;
     VSTable *table = new VSTableMem();
     table->setType("float");
     table->setNumberOfRows(info[particleType].localNumParticles);
     for (const auto &blockName : blocks)
       table->addCol(blockName);
     tableOffset = rank * this->typesOfParticle + particleType;
-    std::cout << "rank: " << rank << " table offset: " << tableOffset << endl;
     memTables.insert(memTables.begin() + tableOffset, table);
   }
 
@@ -393,9 +391,11 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
         unsigned int colList[1] = {colId};
         float *dataPtrs[1] = {columnizedBuffer};
 
-        unsigned long long globalRowStart = 0;
+        unsigned long long globalRowStart = particlesProcessedSoFar;
         unsigned long long globalRowEnd =
-            static_cast<unsigned long long>(particlesRead) - 1;
+            static_cast<unsigned long long>(particlesProcessedSoFar +
+                                            particlesRead) -
+            1;
 
         memTables[tableOffset]->putColumn(colList, 1, globalRowStart,
                                           globalRowEnd, dataPtrs);
@@ -440,11 +440,8 @@ int ChangaSource::readData() {
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  if (rank == 0) {
+  if (rank == 0)
     memTables.reserve(size * 3);
-    std::cout << m_changaDen << endl;
-    std::cout << useMemory << endl;
-  }
 
   std::vector<mpiProcessInfo> info = distributeInfo();
 
