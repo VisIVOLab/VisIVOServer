@@ -70,6 +70,13 @@ struct star_particle {
 };
 
 typedef struct {
+  int particleFields;
+  std::vector<std::string> fieldsName;
+  std::string filename;
+  std::streamoff headerSize;
+} additionalMpiInfo;
+
+typedef struct {
   int localNumParticles;
   int localDisplacement;
 } mpiProcessInfo;
@@ -81,8 +88,17 @@ public:
   ~ChangaSource();
   ChangaSource();
   std::vector<mpiProcessInfo> distributeInfo();
-  int elaborateParticles(std::vector<mpiProcessInfo> info,
-                         Particle particleType);
+  std::vector<additionalMpiInfo> elaborateAdditionalInfo();
+  std::vector<std::string>
+  populateBlocks(Particle particleType,
+                 std::vector<additionalMpiInfo> additionalInfo);
+  void swapEndianness(uint8_t *buffer, size_t bytes, float *newBuffer);
+  void columnizeBuffer(float *columnBuffer, float *originalBuffer, int length,
+                       int rows, int currentRow);
+  void mergeFloatBuffers(float **buffers, size_t *bytesPerBuffer,
+                         int numOfBuffers, float *buffer);
+  int processParticles(Particle particleType, std::vector<mpiProcessInfo> info,
+                       std::vector<additionalMpiInfo> additionalInfo);
 
 private:
   int xdr_header(struct header *, XDR);

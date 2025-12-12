@@ -17,21 +17,23 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-// #include "VisIVOImporterConfigure.h"
 #include "changasource.h"
 
 #include "mpi.h"
 #include "visivoutils.h"
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
+#include <ios>
 #include <iostream>
 #include <mpio.h>
 #include <omp.h>
 #include <stdexcept>
+#include <string>
 #include <unistd.h>
 #include <vector>
 #include <vtkIOStream.h>
@@ -180,27 +182,144 @@ std::vector<mpiProcessInfo> ChangaSource::distributeInfo() {
 }
 
 /**
- * @brief Elaborates all the particles within the standard files.
+ * @brief  Elaborates the additional information basing on the variables.
  *
- * This function chunk-reads the information regarding the particles within the
- * standard files using MPI and OpenMP for different tasks inside the function.
- * Specifically, MPI is used for reading and writing, OpenMP is used for the
- * endianness swap and the columnization.
  *
- * @param info the vector containing the structs that contains the start
+ * @return a vector containing structures which contains said information.
+ */
+std::vector<additionalMpiInfo> ChangaSource::elaborateAdditionalInfo() {
+  std::vector<additionalMpiInfo> additionalInfo;
+  if (m_changaDen) {
+    std::string denExt = ".den";
+    std::string fileName = m_pointsFileName + denExt;
+    additionalInfo.push_back({1, {"DENSITY"}, fileName, 4});
+  }
+
+  return additionalInfo;
+}
+
+/**
+ * @brief  Populates a vector of strings basing on the type of particle and on
+ * additional fields provided.
+ *
+ *
+ * @return a vector of string containing the names of the fields.
+ */
+std::vector<std::string>
+ChangaSource::populateBlocks(Particle particleType,
+                             std::vector<additionalMpiInfo> additionalInfo) {
+  std::vector<std::string> blocks;
+  switch (particleType) {
+  case GAS:
+    blocks.push_back("MASS");
+    blocks.push_back("POS_X");
+    blocks.push_back("POS_Y");
+    blocks.push_back("POS_Z");
+    blocks.push_back("VEL_X");
+    blocks.push_back("VEL_y");
+    blocks.push_back("VEL_Z");
+    blocks.push_back("RHO");
+    blocks.push_back("TEMP");
+    blocks.push_back("EPS");
+    blocks.push_back("METALS");
+    blocks.push_back("PHI");
+    break;
+  case DARK:
+    blocks.push_back("MASS");
+    blocks.push_back("POS_X");
+    blocks.push_back("POS_Y");
+    blocks.push_back("POS_Z");
+    blocks.push_back("VEL_X");
+    blocks.push_back("VEL_y");
+    blocks.push_back("VEL_Z");
+    blocks.push_back("EPS");
+    blocks.push_back("PHI");
+    break;
+  case STAR:
+    blocks.push_back("MASS");
+    blocks.push_back("POS_X");
+    blocks.push_back("POS_Y");
+    blocks.push_back("POS_Z");
+    blocks.push_back("VEL_X");
+    blocks.push_back("VEL_y");
+    blocks.push_back("VEL_Z");
+    blocks.push_back("METALS");
+    blocks.push_back("TFORM");
+    blocks.push_back("EPS");
+    blocks.push_back("PHI");
+    break;
+  default:
+    break;
+  }
+
+  if (!additionalInfo.empty()) {
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      for (int j = 0; j < additionalInfo[i].fieldsName.size(); j++) {
+        blocks.push_back(additionalInfo[i].fieldsName[j]);
+      }
+    }
+  }
+
+  return blocks;
+}
+
+/**
+ * @brief  Swaps the endianness of an array containing bytes representing big
+ * endian floats and memorizes the result inside another buffer.
+ *
+ */
+void ChangaSource::swapEndianness(uint8_t *buffer, size_t bytes,
+                                  float *newBuffer) {
+  float f;
+  uint32_t v;
+#pragma omp parallel for
+  for (int i = 0; i < bytes; i += 4) {
+    v = (uint32_t(buffer[i]) << 24) | (uint32_t(buffer[i + 1]) << 16) |
+        (uint32_t(buffer[i + 2]) << 8) | (uint32_t(buffer[i + 3]));
+    memcpy(&f, &v, 4);
+    newBuffer[i / 4] = f;
+  }
+}
+
+/**
+ * @brief  Columnizes a buffer basing on the rows, the length and the current
+ * column.
+ *
+ */
+void ChangaSource::columnizeBuffer(float *columnBuffer, float *originalBuffer,
+                                   int length, int rows, int currentColumn) {
+#pragma omp parallel for
+  for (int column = 0; column < length; ++column) {
+    columnBuffer[column] = originalBuffer[column * (rows) + currentColumn];
+  }
+}
+
+/**
+ * @brief Processes all the particles within the standard files.
+ *
+ * This function chunk-reads the information regarding the particles within
+ * the standard extension files using MPI and OpenMP for different tasks
+ * inside the function. Specifically, MPI is used for reading and writing,
+ * OpenMP is used for the endianness swap and the columnization.
+ *
+ * @param particleType an enum that specifies the type of the particle to
+ * work with.
+ * @param info the vector containing the structs that contain the start
  * particle and the displacement.
- * @param particleType an enum that specifies the type of the particle to work
- * with.
+ * @param additionalInfo the vector containing the structs that contain
+ * the additional info to work with.
  *
  * @return an int = 0 if successful, 1 otherwise.
  */
-int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
-                                     Particle particleType) {
+int ChangaSource::processParticles(
+    Particle particleType, std::vector<mpiProcessInfo> info,
+    std::vector<additionalMpiInfo> additionalInfo) {
   int size, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   int particleFields;
+  int additionalParticleFields = 0;
   int particlesNumber;
   std::string particleStartPath;
   std::streamoff headerSize = 8 + 6 * 4;
@@ -229,6 +348,7 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
   }
 
   MPI_File readFileHandle;
+  MPI_File *additionalFilesReadHandles;
   int readFileAmode = MPI_MODE_RDONLY;
   int code;
 
@@ -239,7 +359,6 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     return 1;
   }
-
   code = MPI_File_seek(readFileHandle,
                        headerSize + info[particleType].localDisplacement *
                                         particleFields * sizeof(float),
@@ -248,6 +367,32 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
     std::cerr << "Failed to seek." << std::endl;
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     return 1;
+  }
+
+  if (!additionalInfo.empty()) {
+    additionalFilesReadHandles = new MPI_File[additionalInfo.size()];
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      additionalParticleFields += additionalInfo[i].particleFields;
+      code = MPI_File_open(MPI_COMM_WORLD, additionalInfo[i].filename.c_str(),
+                           readFileAmode, MPI_INFO_NULL,
+                           &additionalFilesReadHandles[i]);
+      if (code != MPI_SUCCESS) {
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        return 1;
+      }
+
+      code = MPI_File_seek(additionalFilesReadHandles[i],
+                           additionalInfo[i].headerSize +
+                               info[particleType].localDisplacement *
+                                   additionalInfo[i].particleFields *
+                                   sizeof(float),
+                           MPI_SEEK_SET);
+      if (code != MPI_SUCCESS) {
+        std::cerr << "Failed to seek." << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        return 1;
+      }
+    }
   }
 
   int tableOffset;
@@ -261,50 +406,10 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
   std::string pathFileOut = pathFileIn;
   std::string pathHeader;
 
-  std::vector<std::string> blocks;
+  std::vector<std::string> blocks =
+      populateBlocks(particleType, additionalInfo);
+
   if (rank == 0) {
-    switch (particleType) {
-    case GAS:
-      blocks.push_back("MASS");
-      blocks.push_back("POS_X");
-      blocks.push_back("POS_Y");
-      blocks.push_back("POS_Z");
-      blocks.push_back("VEL_X");
-      blocks.push_back("VEL_y");
-      blocks.push_back("VEL_Z");
-      blocks.push_back("RHO");
-      blocks.push_back("TEMP");
-      blocks.push_back("EPS");
-      blocks.push_back("METALS");
-      blocks.push_back("PHI");
-      break;
-    case DARK:
-      blocks.push_back("MASS");
-      blocks.push_back("POS_X");
-      blocks.push_back("POS_Y");
-      blocks.push_back("POS_Z");
-      blocks.push_back("VEL_X");
-      blocks.push_back("VEL_y");
-      blocks.push_back("VEL_Z");
-      blocks.push_back("EPS");
-      blocks.push_back("PHI");
-      break;
-    case STAR:
-      blocks.push_back("MASS");
-      blocks.push_back("POS_X");
-      blocks.push_back("POS_Y");
-      blocks.push_back("POS_Z");
-      blocks.push_back("VEL_X");
-      blocks.push_back("VEL_y");
-      blocks.push_back("VEL_Z");
-      blocks.push_back("METALS");
-      blocks.push_back("TFORM");
-      blocks.push_back("EPS");
-      blocks.push_back("PHI");
-      break;
-    default:
-      break;
-    }
     pathHeader = pathFileOut + particleStartPath + ".bin";
     makeHeader(particlesNumber, pathHeader, blocks, m_cellSize, m_cellComp,
                m_volumeOrTable);
@@ -333,52 +438,123 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
   }
 
   const size_t RAW_CHUNK_SIZE = 16 * 1024 * 1024; // 16 MB
-  const size_t CHUNK_SIZE = RAW_CHUNK_SIZE / (particleFields * sizeof(float)) *
-                            (particleFields * sizeof(float)); // floor value
+  size_t totalChunkSize = 0;
+
+  size_t *chunkSizes = new size_t[1 + additionalInfo.size()];
+  chunkSizes[0] = RAW_CHUNK_SIZE / (particleFields * sizeof(float)) *
+                  (particleFields * sizeof(float));
+  totalChunkSize += chunkSizes[0];
+
+  uint8_t **rawFileBuffers = new uint8_t *[1 + additionalInfo.size()];
+  rawFileBuffers[0] = new uint8_t[chunkSizes[0]];
+
+  float **fileBuffers = new float *[1 + additionalInfo.size()];
+  fileBuffers[0] = new float[chunkSizes[0] / sizeof(float)];
+
+  float **columnizedBuffers = new float *[1 + additionalInfo.size()];
+  columnizedBuffers[0] = new float[chunkSizes[0] / sizeof(float)];
+
+  size_t *bytesLeftPerFile = new size_t[1 + additionalInfo.size()];
+  bytesLeftPerFile[0] =
+      info[particleType].localNumParticles * particleFields * sizeof(float);
+
+  int *fieldOffsets = new int[1 + additionalInfo.size()];
+  fieldOffsets[0] = 0;
+
+  if (!additionalInfo.empty()) {
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      chunkSizes[i + 1] = (chunkSizes[0] / (particleFields * sizeof(float))) *
+                          additionalInfo[i].particleFields * sizeof(float);
+      totalChunkSize += chunkSizes[i + 1];
+      bytesLeftPerFile[i + 1] = info[particleType].localNumParticles *
+                                additionalInfo[i].particleFields *
+                                sizeof(float);
+      rawFileBuffers[i + 1] = new uint8_t[chunkSizes[i + 1]];
+      fileBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
+      columnizedBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
+      fieldOffsets[i + 1] = fieldOffsets[i] + additionalInfo[i].particleFields;
+    }
+  }
+
+  size_t *bytesToReadPerFile = new size_t[1 + additionalInfo.size()];
+  size_t totalBytesLeft = info[particleType].localNumParticles *
+                          (particleFields + additionalParticleFields) *
+                          sizeof(float);
+  size_t totalBytesToRead;
+  size_t structsLeft;
+  float *buffer = new float[totalChunkSize / sizeof(float)];
+  int particlesRead;
+  int particlesProcessedSoFar = 0;
+  int currentFile = 0;
+  int localField = 0;
 
   MPI_Status status;
   MPI_Offset writeFileOffset;
 
-  size_t bytesLeft =
-      info[particleType].localNumParticles * particleFields * sizeof(float);
-  size_t bytesToRead;
-  size_t structsLeft;
-  int particlesRead;
-  int particlesProcessedSoFar = 0;
-  uint8_t *rawBuffer = new uint8_t[CHUNK_SIZE];
-  float *buffer = new float[CHUNK_SIZE / sizeof(float)];
-  float *columnizedBuffer = new float[CHUNK_SIZE / sizeof(float)];
-  float f;
-  uint32_t v;
-
   // chunked read
-  while (bytesLeft > 0) {
-    if (bytesLeft >= CHUNK_SIZE) {
-      bytesToRead = CHUNK_SIZE;
+  while (totalBytesLeft > 0) {
+    if (bytesLeftPerFile[0] >= chunkSizes[0]) {
+      bytesToReadPerFile[0] = chunkSizes[0];
     } else {
-      structsLeft = bytesLeft / (particleFields * sizeof(float));
-      bytesToRead = structsLeft * (particleFields * sizeof(float));
-      if (bytesToRead == 0)
+      structsLeft = bytesLeftPerFile[0] / (particleFields * sizeof(float));
+      bytesToReadPerFile[0] = structsLeft * particleFields * sizeof(float);
+      if (bytesToReadPerFile[0] == 0)
         break;
     }
-    MPI_File_read(readFileHandle, rawBuffer, bytesToRead, MPI_UINT8_T, &status);
-    bytesLeft -= bytesToRead;
-    particlesRead = bytesToRead / (particleFields * sizeof(float));
+    totalBytesToRead = bytesToReadPerFile[0];
 
-    // endianness swap
-#pragma omp parallel for
-    for (int i = 0; i < bytesToRead; i += 4) {
-      v = (uint32_t(rawBuffer[i]) << 24) | (uint32_t(rawBuffer[i + 1]) << 16) |
-          (uint32_t(rawBuffer[i + 2]) << 8) | (uint32_t(rawBuffer[i + 3]));
-      memcpy(&f, &v, 4);
-      buffer[i / 4] = f;
+    MPI_File_read(readFileHandle, rawFileBuffers[0], bytesToReadPerFile[0],
+                  MPI_UINT8_T, &status);
+    particlesRead = bytesToReadPerFile[0] / (particleFields * sizeof(float));
+
+    if (!additionalInfo.empty()) {
+      for (int i = 0; i < additionalInfo.size(); i++) {
+        bytesToReadPerFile[i + 1] =
+            particlesRead * additionalInfo[i].particleFields * sizeof(float);
+        totalBytesToRead += bytesToReadPerFile[i + 1];
+        MPI_File_read(additionalFilesReadHandles[i], rawFileBuffers[i + 1],
+                      bytesToReadPerFile[i + 1], MPI_UINT8_T, &status);
+      }
     }
 
-    // columnization
-    for (int field = 0; field < particleFields; ++field) {
-#pragma omp parallel for
-      for (int particle = 0; particle < particlesRead; ++particle) {
-        columnizedBuffer[particle] = buffer[particle * particleFields + field];
+    totalBytesLeft -= particlesRead *
+                      (particleFields + additionalParticleFields) *
+                      sizeof(float);
+
+    bytesLeftPerFile[0] -= bytesToReadPerFile[0];
+    if (!additionalInfo.empty()) {
+      for (int i = 0; i < additionalInfo.size(); i++) {
+        bytesLeftPerFile[i + 1] -= bytesToReadPerFile[i + 1];
+      }
+    }
+
+    swapEndianness(rawFileBuffers[0], bytesToReadPerFile[0], fileBuffers[0]);
+    if (!additionalInfo.empty()) {
+      for (int i = 0; i < additionalInfo.size(); i++) {
+        swapEndianness(rawFileBuffers[i + 1], bytesToReadPerFile[i + 1],
+                       fileBuffers[i + 1]);
+      }
+    }
+
+    for (int field = 0; field < particleFields + additionalParticleFields;
+         ++field) {
+      if (field < particleFields) {
+        columnizeBuffer(columnizedBuffers[0], fileBuffers[0], particlesRead,
+                        particleFields, field);
+        localField = field;
+      } else {
+        for (int j = 0; j < additionalInfo.size() + 1; j++) {
+          if (field < (fieldOffsets[j] + particleFields)) {
+            currentFile = j;
+            break;
+          }
+        }
+        localField = field - (fieldOffsets[currentFile - 1] + particleFields);
+
+        columnizeBuffer(columnizedBuffers[currentFile],
+                        fileBuffers[currentFile], particlesRead,
+                        additionalInfo[currentFile - 1].particleFields,
+                        localField);
       }
 
       if (useMemory) {
@@ -389,7 +565,7 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
         }
 
         unsigned int colList[1] = {colId};
-        float *dataPtrs[1] = {columnizedBuffer};
+        float *dataPtrs[1] = {columnizedBuffers[currentFile]};
 
         unsigned long long globalRowStart = particlesProcessedSoFar;
         unsigned long long globalRowEnd =
@@ -405,16 +581,32 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
             (field * particlesNumber +
              (info[particleType].localDisplacement + particlesProcessedSoFar));
 
-        MPI_File_write_at(writeFileHandle, writeFileOffset, columnizedBuffer,
-                          particlesRead, MPI_FLOAT, &status);
+        MPI_File_write_at(writeFileHandle, writeFileOffset,
+                          columnizedBuffers[currentFile], particlesRead,
+                          MPI_FLOAT, &status);
       }
     }
     particlesProcessedSoFar += particlesRead;
+    currentFile = 0;
   }
 
-  delete[] rawBuffer;
+  delete[] chunkSizes;
+  delete[] rawFileBuffers[0];
+  delete[] fileBuffers[0];
   delete[] buffer;
-  delete[] columnizedBuffer;
+  delete[] columnizedBuffers[0];
+  delete[] bytesLeftPerFile;
+  delete[] fieldOffsets;
+  if (!additionalInfo.empty()) {
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      delete[] rawFileBuffers[i + 1];
+      delete[] columnizedBuffers[i + 1];
+      delete[] fileBuffers[i + 1];
+    }
+  }
+  delete[] rawFileBuffers;
+  delete[] columnizedBuffers;
+  delete[] fileBuffers;
 
   code = MPI_File_close(&readFileHandle);
   if (code != MPI_SUCCESS) {
@@ -428,6 +620,18 @@ int ChangaSource::elaborateParticles(std::vector<mpiProcessInfo> info,
     std::cerr << "Failed to close write file." << std::endl;
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     return 1;
+  }
+
+  if (!additionalInfo.empty()) {
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      code = MPI_File_close(&additionalFilesReadHandles[i]);
+      if (code != MPI_SUCCESS) {
+        std::cerr << "Failed to close read file." << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        return 1;
+      }
+    }
+    delete[] additionalFilesReadHandles;
   }
 
   return 0;
@@ -444,10 +648,11 @@ int ChangaSource::readData() {
     memTables.reserve(size * 3);
 
   std::vector<mpiProcessInfo> info = distributeInfo();
+  std::vector<additionalMpiInfo> additionalInfo = elaborateAdditionalInfo();
 
-  elaborateParticles(info, GAS);
-  elaborateParticles(info, DARK);
-  elaborateParticles(info, STAR);
+  processParticles(GAS, info, additionalInfo);
+  // processParticles(DARK, info, additionalInfo);
+  // processParticles(STAR, info, additionalInfo);
 
   MPI_Finalize();
 
