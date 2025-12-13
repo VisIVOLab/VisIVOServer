@@ -323,6 +323,7 @@ int ChangaSource::processParticles(
   int particlesNumber;
   std::string particleStartPath;
   std::streamoff headerSize = 8 + 6 * 4;
+  int startParticle = 0;
 
   switch (particleType) {
   case GAS:
@@ -333,12 +334,14 @@ int ChangaSource::processParticles(
   case DARK:
     particleFields = 9;
     particleStartPath = "DARK";
+    startParticle = this->nsph;
     particlesNumber = this->ndark;
     headerSize += this->nsph * 12 * sizeof(float);
     break;
   case STAR:
     particleFields = 11;
     particleStartPath = "STAR";
+    startParticle = this->nsph + this->ndark;
     particlesNumber = this->nstar;
     headerSize +=
         this->nsph * 12 * sizeof(float) + this->ndark * 9 * sizeof(float);
@@ -348,7 +351,7 @@ int ChangaSource::processParticles(
   }
 
   MPI_File readFileHandle;
-  MPI_File *additionalFilesReadHandles;
+  MPI_File *additionalReadFilesHandles;
   int readFileAmode = MPI_MODE_RDONLY;
   int code;
 
@@ -370,22 +373,24 @@ int ChangaSource::processParticles(
   }
 
   if (!additionalInfo.empty()) {
-    additionalFilesReadHandles = new MPI_File[additionalInfo.size()];
+    additionalReadFilesHandles = new MPI_File[additionalInfo.size()];
     for (int i = 0; i < additionalInfo.size(); i++) {
       additionalParticleFields += additionalInfo[i].particleFields;
       code = MPI_File_open(MPI_COMM_WORLD, additionalInfo[i].filename.c_str(),
                            readFileAmode, MPI_INFO_NULL,
-                           &additionalFilesReadHandles[i]);
+                           &additionalReadFilesHandles[i]);
       if (code != MPI_SUCCESS) {
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         return 1;
       }
 
-      code = MPI_File_seek(additionalFilesReadHandles[i],
-                           additionalInfo[i].headerSize +
-                               info[particleType].localDisplacement *
-                                   additionalInfo[i].particleFields *
-                                   sizeof(float),
+      headerSize =
+          additionalInfo[i].headerSize +
+          (startParticle * additionalInfo[i].particleFields * sizeof(float));
+      headerSize += info[particleType].localDisplacement *
+                    additionalInfo[i].particleFields * sizeof(float);
+
+      code = MPI_File_seek(additionalReadFilesHandles[i], headerSize,
                            MPI_SEEK_SET);
       if (code != MPI_SUCCESS) {
         std::cerr << "Failed to seek." << std::endl;
@@ -512,7 +517,7 @@ int ChangaSource::processParticles(
         bytesToReadPerFile[i + 1] =
             particlesRead * additionalInfo[i].particleFields * sizeof(float);
         totalBytesToRead += bytesToReadPerFile[i + 1];
-        MPI_File_read(additionalFilesReadHandles[i], rawFileBuffers[i + 1],
+        MPI_File_read(additionalReadFilesHandles[i], rawFileBuffers[i + 1],
                       bytesToReadPerFile[i + 1], MPI_UINT8_T, &status);
       }
     }
@@ -624,14 +629,14 @@ int ChangaSource::processParticles(
 
   if (!additionalInfo.empty()) {
     for (int i = 0; i < additionalInfo.size(); i++) {
-      code = MPI_File_close(&additionalFilesReadHandles[i]);
+      code = MPI_File_close(&additionalReadFilesHandles[i]);
       if (code != MPI_SUCCESS) {
         std::cerr << "Failed to close read file." << std::endl;
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         return 1;
       }
     }
-    delete[] additionalFilesReadHandles;
+    delete[] additionalReadFilesHandles;
   }
 
   return 0;
@@ -651,8 +656,8 @@ int ChangaSource::readData() {
   std::vector<additionalMpiInfo> additionalInfo = elaborateAdditionalInfo();
 
   processParticles(GAS, info, additionalInfo);
-  // processParticles(DARK, info, additionalInfo);
-  // processParticles(STAR, info, additionalInfo);
+  processParticles(DARK, info, additionalInfo);
+  processParticles(STAR, info, additionalInfo);
 
   MPI_Finalize();
 
