@@ -23,51 +23,13 @@
 
 #include "abstractsource.h"
 
+#include <mpi.h>
 #include <rpc/rpc.h>
 #include <rpc/xdr.h>
 #include <string>
 #include <vector>
 
 enum Particle { GAS = 0, DARK = 1, STAR = 2 };
-
-struct header {
-  double time;
-  int nbodies;
-  int ndim;
-  int nsph;
-  int ndark;
-  int nstar;
-  int pad;
-};
-
-struct gas_particle {
-  float mass;
-  float pos[3];
-  float vel[3];
-  float rho;
-  float temp;
-  float eps;
-  float metals;
-  float phi;
-};
-
-struct dark_particle {
-  float mass;
-  float pos[3];
-  float vel[3];
-  float eps;
-  float phi;
-};
-
-struct star_particle {
-  float mass;
-  float pos[3];
-  float vel[3];
-  float metals;
-  float tform;
-  float eps;
-  float phi;
-};
 
 typedef struct {
   int particleFields;
@@ -98,6 +60,9 @@ public:
                        int rows, int currentRow);
   void mergeFloatBuffers(float **buffers, size_t *bytesPerBuffer,
                          int numOfBuffers, float *buffer);
+  int closeFiles(MPI_File *writeFileHandle, MPI_File *readFileHandle,
+                 std::vector<additionalMpiInfo> additionalInfo,
+                 MPI_File *additionalReadFilesHandles);
   int processParticles(Particle particleType, std::vector<mpiProcessInfo> info,
                        std::vector<additionalMpiInfo> additionalInfo);
 

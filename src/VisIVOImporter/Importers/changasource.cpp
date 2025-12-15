@@ -271,6 +271,39 @@ void ChangaSource::columnizeBuffer(float *columnBuffer, float *originalBuffer,
   }
 }
 
+int ChangaSource::closeFiles(MPI_File *writeFileHandle,
+                             MPI_File *readFileHandle,
+                             std::vector<additionalMpiInfo> additionalInfo,
+                             MPI_File *additionalReadFilesHandles) {
+  int code;
+  code = MPI_File_close(readFileHandle);
+  if (code != MPI_SUCCESS) {
+    std::cerr << "Failed to close read file." << std::endl;
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    return 1;
+  }
+
+  code = MPI_File_close(writeFileHandle);
+  if (code != MPI_SUCCESS) {
+    std::cerr << "Failed to close write file." << std::endl;
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    return 1;
+  }
+
+  if (!additionalInfo.empty()) {
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      code = MPI_File_close(&additionalReadFilesHandles[i]);
+      if (code != MPI_SUCCESS) {
+        std::cerr << "Failed to close read file." << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        return 1;
+      }
+    }
+    delete[] additionalReadFilesHandles;
+  }
+  return 0;
+}
+
 /**
  * @brief Processes all the particles within the standard files.
  *
@@ -588,31 +621,8 @@ int ChangaSource::processParticles(
   delete[] columnizedBuffers;
   delete[] fileBuffers;
 
-  code = MPI_File_close(&readFileHandle);
-  if (code != MPI_SUCCESS) {
-    std::cerr << "Failed to close read file." << std::endl;
-    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-    return 1;
-  }
-
-  code = MPI_File_close(&writeFileHandle);
-  if (code != MPI_SUCCESS) {
-    std::cerr << "Failed to close write file." << std::endl;
-    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-    return 1;
-  }
-
-  if (!additionalInfo.empty()) {
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      code = MPI_File_close(&additionalReadFilesHandles[i]);
-      if (code != MPI_SUCCESS) {
-        std::cerr << "Failed to close read file." << std::endl;
-        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-        return 1;
-      }
-    }
-    delete[] additionalReadFilesHandles;
-  }
+  closeFiles(&writeFileHandle, &readFileHandle, additionalInfo,
+             additionalReadFilesHandles);
 
   return 0;
 }
