@@ -118,65 +118,41 @@ std::vector<mpiProcessInfo> ChangaSource::distributeInfo() {
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  std::vector<mpiProcessInfo> info;
+  std::vector<mpiProcessInfo> info(this->typesOfParticle);
 
-  int **particlesPerRankPerParticle = NULL;
-  int **displacementPerRankPerParticle = NULL;
-  int numbersOfParticles[] = {this->nsph, this->ndark, this->nstar};
+  std::vector<mpiProcessInfo> allData;
+
+  MPI_Datatype MPI_mpiProcessInfo;
+  MPI_Type_contiguous(2, MPI_INT, &MPI_mpiProcessInfo);
+  MPI_Type_commit(&MPI_mpiProcessInfo);
+
+  std::vector<int> numbersOfParticles = {this->nsph, this->ndark, this->nstar};
 
   if (rank == 0) {
-    particlesPerRankPerParticle =
-        static_cast<int **>(malloc(sizeof(int *) * this->typesOfParticle));
-    displacementPerRankPerParticle =
-        static_cast<int **>(malloc(sizeof(int *) * this->typesOfParticle));
-    for (int i = 0; i < this->typesOfParticle; i++) {
-      particlesPerRankPerParticle[i] =
-          static_cast<int *>(malloc(sizeof(int) * size));
-      displacementPerRankPerParticle[i] =
-          static_cast<int *>(malloc(sizeof(int) * size));
-
-      displacementPerRankPerParticle[i][0] = 0;
-      for (int j = 0; j < size; j++) {
-        int base = numbersOfParticles[i] / size;
-        int remainder = numbersOfParticles[i] % size;
-
-        particlesPerRankPerParticle[i][j] = base;
-        if (j < remainder) {
-          particlesPerRankPerParticle[i][j] += 1;
+    allData.reserve(size * this->typesOfParticle);
+    int base, remainder;
+    int count, displacement;
+    for (int i = 0; i < size; i++) {
+      if (i == 0)
+        displacement = 0;
+      for (int j = 0; j < this->typesOfParticle; j++) {
+        base = numbersOfParticles[j] / size;
+        remainder = numbersOfParticles[j] % size;
+        count = base + (i < remainder ? 1 : 0);
+        if (i > 0) {
+          displacement =
+              allData[(i - 1) * this->typesOfParticle + j].localDisplacement +
+              allData[(i - 1) * this->typesOfParticle + j].localNumParticles;
         }
-        if (j > 0) {
-          displacementPerRankPerParticle[i][j] =
-              displacementPerRankPerParticle[i][j - 1] +
-              particlesPerRankPerParticle[i][j - 1];
-        }
+        allData.push_back({count, displacement});
       }
     }
   }
 
-  int localNumParticlesBuffer;
-  int localDisplacementBuffer;
-
-  for (int i = 0; i < this->typesOfParticle; i++) {
-    MPI_Scatter(rank == 0 ? particlesPerRankPerParticle[i] : NULL, 1, MPI_INT,
-                &localNumParticlesBuffer, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Scatter(rank == 0 ? displacementPerRankPerParticle[i] : NULL, 1,
-                MPI_INT, &localDisplacementBuffer, 1, MPI_INT, 0,
-                MPI_COMM_WORLD);
-    info.push_back({localNumParticlesBuffer, localDisplacementBuffer});
-  }
-
-  if (rank == 0) {
-    for (int i = 0; i < this->typesOfParticle; i++) {
-      free(particlesPerRankPerParticle[i]);
-      free(displacementPerRankPerParticle[i]);
-      particlesPerRankPerParticle[i] = NULL;
-      displacementPerRankPerParticle[i] = NULL;
-    }
-    free(particlesPerRankPerParticle);
-    free(displacementPerRankPerParticle);
-    particlesPerRankPerParticle = NULL;
-    displacementPerRankPerParticle = NULL;
-  }
+  MPI_Scatter(rank == 0 ? allData.data() : nullptr, typesOfParticle,
+              MPI_mpiProcessInfo, info.data(), typesOfParticle,
+              MPI_mpiProcessInfo, 0, MPI_COMM_WORLD);
+  MPI_Type_free(&MPI_mpiProcessInfo);
 
   return info;
 }
@@ -207,8 +183,9 @@ std::vector<additionalMpiInfo> ChangaSource::elaborateAdditionalInfo() {
  */
 std::vector<std::string>
 ChangaSource::populateBlocks(Particle particleType,
-                             std::vector<additionalMpiInfo> additionalInfo) {
-  std::vector<std::string> blocks;
+                             std::vector<additionalMpiInfo> additionalInfo,
+                             int numberOfFields) {
+  std::vector<std::string> blocks(numberOfFields);
   switch (particleType) {
   case GAS:
     blocks.push_back("MASS");
@@ -411,8 +388,8 @@ int ChangaSource::processParticles(
   std::string pathFileOut = pathFileIn;
   std::string pathHeader;
 
-  std::vector<std::string> blocks =
-      populateBlocks(particleType, additionalInfo);
+  std::vector<std::string> blocks = populateBlocks(
+      particleType, additionalInfo, particleFields + additionalParticleFields);
 
   if (rank == 0) {
     pathHeader = pathFileOut + particleStartPath + ".bin";
@@ -487,7 +464,6 @@ int ChangaSource::processParticles(
                           sizeof(float);
   size_t totalBytesToRead;
   size_t structsLeft;
-  float *buffer = new float[totalChunkSize / sizeof(float)];
   int particlesRead;
   int particlesProcessedSoFar = 0;
   int currentFile = 0;
@@ -598,7 +574,6 @@ int ChangaSource::processParticles(
   delete[] chunkSizes;
   delete[] rawFileBuffers[0];
   delete[] fileBuffers[0];
-  delete[] buffer;
   delete[] columnizedBuffers[0];
   delete[] bytesLeftPerFile;
   delete[] fieldOffsets;

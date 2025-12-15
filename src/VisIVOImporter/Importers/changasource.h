@@ -91,7 +91,8 @@ public:
   std::vector<additionalMpiInfo> elaborateAdditionalInfo();
   std::vector<std::string>
   populateBlocks(Particle particleType,
-                 std::vector<additionalMpiInfo> additionalInfo);
+                 std::vector<additionalMpiInfo> additionalInfo,
+                 int numberOfFields);
   void swapEndianness(uint8_t *buffer, size_t bytes, float *newBuffer);
   void columnizeBuffer(float *columnBuffer, float *originalBuffer, int length,
                        int rows, int currentRow);
