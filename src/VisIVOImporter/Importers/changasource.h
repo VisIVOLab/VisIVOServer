@@ -58,8 +58,6 @@ public:
   void swapEndianness(uint8_t *buffer, size_t bytes, float *newBuffer);
   void columnizeBuffer(float *columnBuffer, float *originalBuffer, int length,
                        int rows, int currentRow);
-  void mergeFloatBuffers(float **buffers, size_t *bytesPerBuffer,
-                         int numOfBuffers, float *buffer);
   int closeFiles(MPI_File *writeFileHandle, MPI_File *readFileHandle,
                  std::vector<additionalMpiInfo> additionalInfo,
                  MPI_File *additionalReadFilesHandles);

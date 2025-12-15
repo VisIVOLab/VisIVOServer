@@ -299,7 +299,6 @@ int ChangaSource::closeFiles(MPI_File *writeFileHandle,
         return 1;
       }
     }
-    delete[] additionalReadFilesHandles;
   }
   return 0;
 }
@@ -623,6 +622,7 @@ int ChangaSource::processParticles(
 
   closeFiles(&writeFileHandle, &readFileHandle, additionalInfo,
              additionalReadFilesHandles);
+  delete[] additionalReadFilesHandles;
 
   return 0;
 }
