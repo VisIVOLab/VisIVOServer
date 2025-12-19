@@ -369,6 +369,8 @@ int ChangaSource::processParticles(
   int readFileAmode = MPI_MODE_RDONLY;
   int code;
 
+  std::cout << "About to open file: " << m_pointsFileName << endl;
+
   code = MPI_File_open(MPI_COMM_WORLD, m_pointsFileName.c_str(), readFileAmode,
                        MPI_INFO_NULL, &readFileHandle);
   if (code != MPI_SUCCESS) {
@@ -432,6 +434,7 @@ int ChangaSource::processParticles(
     pathHeader = pathFileOut + particleStartPath + ".bin";
     makeHeader(particlesNumber, pathHeader, blocks, m_cellSize, m_cellComp,
                m_volumeOrTable);
+    std::cout << "Made header in the path: " << pathHeader << endl;
   }
 
   if (useMemory) {
@@ -445,6 +448,8 @@ int ChangaSource::processParticles(
   }
 
   else {
+    std::cout << "About to open file: "
+              << pathFileOut + particleStartPath + ".bin" << endl;
     code = MPI_File_open(MPI_COMM_WORLD,
                          (pathFileOut + particleStartPath + ".bin").c_str(),
                          writeFileAmode, MPI_INFO_NULL, &writeFileHandle);
@@ -521,9 +526,12 @@ int ChangaSource::processParticles(
     }
     totalBytesToRead = bytesToReadPerFile[0];
 
+    std::cout << "About to read # bytes: " << bytesToReadPerFile[0] << endl;
+
     MPI_File_read(readFileHandle, rawFileBuffers[0], bytesToReadPerFile[0],
                   MPI_UINT8_T, &status);
     particlesRead = bytesToReadPerFile[0] / (particleFields * sizeof(float));
+    std::cout << "# particles read: " << particlesRead << endl;
 
     if (!additionalInfo.empty()) {
       for (int i = 0; i < additionalInfo.size(); i++) {
@@ -654,8 +662,8 @@ int ChangaSource::readData() {
         << endl;
 
   processParticles(GAS, info, additionalInfo);
-  processParticles(DARK, info, additionalInfo);
-  processParticles(STAR, info, additionalInfo);
+  // processParticles(DARK, info, additionalInfo);
+  // processParticles(STAR, info, additionalInfo);
 
   MPI_Finalize();
 
