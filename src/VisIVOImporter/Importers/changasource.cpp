@@ -30,13 +30,16 @@
 #include <fstream>
 #include <ios>
 #include <iostream>
-#include <mpio.h>
 #include <omp.h>
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
 #include <vector>
 #include <vtkIOStream.h>
+
+#if __has_include(<mpio.h>)
+#include <mpio.h>
+#endif
 
 namespace {
 
@@ -326,6 +329,8 @@ int ChangaSource::processParticles(
   int size, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  std::cout << rank << ": " << "Inside processParticles." << endl;
 
   int particleFields;
   int additionalParticleFields = 0;
@@ -635,10 +640,18 @@ int ChangaSource::readData() {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   if (rank == 0)
+    std::cout << "Successfully initialized MPI environment." << endl;
+
+  if (rank == 0)
     memTables.reserve(size * 3);
 
   std::vector<mpiProcessInfo> info = distributeInfo();
   std::vector<additionalMpiInfo> additionalInfo = elaborateAdditionalInfo();
+
+  if (rank == 0)
+    std::cout
+        << "Distributed and elaborated info. Now about to process particles."
+        << endl;
 
   processParticles(GAS, info, additionalInfo);
   processParticles(DARK, info, additionalInfo);
