@@ -556,8 +556,7 @@ int ChangaSource::processParticles(
     for (int field = 0; field < particleFields + additionalParticleFields;
          ++field) {
       if (field < particleFields) {
-        columnizeBuffer(columnizedBuffers[0], fileBuffers[0], particlesRead,
-                        particleFields, field);
+        currentFile = 0;
         localField = field;
       } else {
         for (int j = 0; j < additionalInfo.size() + 1; j++) {
@@ -567,12 +566,14 @@ int ChangaSource::processParticles(
           }
         }
         localField = field - (fieldOffsets[currentFile - 1] + particleFields);
-
-        columnizeBuffer(columnizedBuffers[currentFile],
-                        fileBuffers[currentFile], particlesRead,
-                        additionalInfo[currentFile - 1].particleFields,
-                        localField);
       }
+
+      columnizeBuffer(columnizedBuffers[currentFile], fileBuffers[currentFile],
+                      particlesRead,
+                      field < particleFields
+                          ? particleFields
+                          : additionalInfo[currentFile - 1].particleFields,
+                      localField);
 
       if (useMemory) {
         unsigned int colId = memTables[tableOffset]->getColId(blocks[field]);
