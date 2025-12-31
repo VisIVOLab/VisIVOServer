@@ -24,8 +24,6 @@
 #include "abstractsource.h"
 
 #include <mpi.h>
-#include <rpc/rpc.h>
-#include <rpc/xdr.h>
 #include <string>
 #include <vector>
 
@@ -65,15 +63,10 @@ public:
                        std::vector<additionalMpiInfo> additionalInfo);
 
 private:
-  int xdr_header(struct header *, XDR);
-  std::vector<std::string> m_fieldsNames;
-  unsigned int npart_total[6];
-  FILE *fpread;
   const int typesOfParticle = 3;
   int nsph;
   int ndark;
   int nstar;
-  char m_dataType, m_Endian;
 };
 
 #endif

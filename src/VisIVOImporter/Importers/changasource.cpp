@@ -181,6 +181,11 @@ std::vector<additionalMpiInfo> ChangaSource::elaborateAdditionalInfo() {
  * @brief  Populates a vector of strings basing on the type of particle and on
  * additional fields provided.
  *
+ * @param particleType an enum that specifies the type of the particle to
+ * work with.
+ * @param additionalInfo an array of additionaMpiInfo structs to extract
+ * additional field names from.
+ * @param numberOfFields the total number of fields.
  *
  * @return a vector of string containing the names of the fields.
  */
@@ -245,9 +250,19 @@ ChangaSource::populateBlocks(Particle particleType,
 }
 
 /**
- * @brief  Swaps the endianness of an array containing bytes representing big
- * endian floats and memorizes the result inside another buffer.
+ * @brief Swaps the endianness of an array of bytes representing big-endian
+ * float values.
  *
+ * This function reads a buffer of bytes, converts each value to the host
+ * endianness, and stores the resulting floats into a separate output buffer.
+ *
+ * The conversion is performed in parallel using OpenMP.
+ *
+ * @param buffer Pointer to the input byte buffer containing big-endian float
+ * representations.
+ * @param bytes Total number of bytes in the input buffer.
+ * @param newBuffer Pointer to the output buffer where the converted floats will
+ * be stored.
  */
 void ChangaSource::swapEndianness(uint8_t *buffer, size_t bytes,
                                   float *newBuffer) {
@@ -263,9 +278,17 @@ void ChangaSource::swapEndianness(uint8_t *buffer, size_t bytes,
 }
 
 /**
- * @brief  Columnizes a buffer basing on the rows, the length and the current
- * column.
+ * @brief Extracts a column from a row-major buffer.
  *
+ * This function copies the values of a specified column from a buffer
+ * stored in row-major order into a linear buffer.
+ * The operation is parallelized using OpenMP.
+ *
+ * @param columnBuffer   Output buffer containing the extracted column.
+ * @param originalBuffer Input buffer storing the data in row-major order.
+ * @param length         Number of elements to extract.
+ * @param rows           Number of rows in the original buffer.
+ * @param currentColumn  Index of the column to extract.
  */
 void ChangaSource::columnizeBuffer(float *columnBuffer, float *originalBuffer,
                                    int length, int rows, int currentColumn) {
@@ -275,6 +298,21 @@ void ChangaSource::columnizeBuffer(float *columnBuffer, float *originalBuffer,
   }
 }
 
+/**
+ * @brief Closes all MPI file handles used by the ChangaSource importer.
+ *
+ * This function closes the main MPI read and write file handles and MPI read
+ * every file handle specified in the additionalInfo vector.
+ *
+ * @param writeFileHandle Pointer to the MPI file handle used for writing.
+ * @param readFileHandle  Pointer to the MPI file handle used for reading.
+ * @param additionalInfo  Vector containing metadata for any additional MPI read
+ * files. Its size determines how many additional file handles must be closed.
+ * @param additionalReadFilesHandles Array of MPI file handles corresponding to
+ * the entries in additionalInfo.
+ *
+ * @return an int = 0 if successful, 1 otherwise.
+ */
 int ChangaSource::closeFiles(MPI_File *writeFileHandle,
                              MPI_File *readFileHandle,
                              std::vector<additionalMpiInfo> additionalInfo,
@@ -310,10 +348,9 @@ int ChangaSource::closeFiles(MPI_File *writeFileHandle,
 /**
  * @brief Processes all the particles within the standard files.
  *
- * This function chunk-reads the information regarding the particles within
- * the standard extension files using MPI and OpenMP for different tasks
- * inside the function. Specifically, MPI is used for reading and writing,
- * OpenMP is used for the endianness swap and the columnization.
+ * This function chunk-reads, -elaborates, and -writes the information regarding
+ * the particles within the standard extension files using MPI and OpenMP for
+ * different tasks inside the function.
  *
  * @param particleType an enum that specifies the type of the particle to
  * work with.
