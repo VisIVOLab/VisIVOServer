@@ -495,10 +495,17 @@ int ChangaSource::processParticles(
   const size_t RAW_CHUNK_SIZE = 16 * 1024 * 1024; // 16 MB
   size_t totalChunkSize = 0;
 
-  size_t *chunkSizes = new size_t[1 + additionalInfo.size()];
-  chunkSizes[0] = RAW_CHUNK_SIZE / (particleFields * sizeof(float)) *
+  std::vector<std::size_t> chunkSizes(1 + additionalInfo.size());
+  chunkSizes[0] = (RAW_CHUNK_SIZE / (particleFields * sizeof(float))) *
                   (particleFields * sizeof(float));
   totalChunkSize += chunkSizes[0];
+
+  std::vector<std::size_t> bytesLeftPerFile(1 + additionalInfo.size());
+  bytesLeftPerFile[0] =
+      info[particleType].localNumParticles * particleFields * sizeof(float);
+
+  std::vector<int> fieldOffsets(1 + additionalInfo.size());
+  fieldOffsets[0] = 0;
 
   uint8_t **rawFileBuffers = new uint8_t *[1 + additionalInfo.size()];
   rawFileBuffers[0] = new uint8_t[chunkSizes[0]];
@@ -509,13 +516,6 @@ int ChangaSource::processParticles(
   float **columnizedBuffers = new float *[1 + additionalInfo.size()];
   columnizedBuffers[0] = new float[chunkSizes[0] / sizeof(float)];
 
-  size_t *bytesLeftPerFile = new size_t[1 + additionalInfo.size()];
-  bytesLeftPerFile[0] =
-      info[particleType].localNumParticles * particleFields * sizeof(float);
-
-  int *fieldOffsets = new int[1 + additionalInfo.size()];
-  fieldOffsets[0] = 0;
-
   if (!additionalInfo.empty()) {
     for (int i = 0; i < additionalInfo.size(); i++) {
       chunkSizes[i + 1] = (chunkSizes[0] / (particleFields * sizeof(float))) *
@@ -524,10 +524,10 @@ int ChangaSource::processParticles(
       bytesLeftPerFile[i + 1] = info[particleType].localNumParticles *
                                 additionalInfo[i].particleFields *
                                 sizeof(float);
+      fieldOffsets[i + 1] = fieldOffsets[i] + additionalInfo[i].particleFields;
       rawFileBuffers[i + 1] = new uint8_t[chunkSizes[i + 1]];
       fileBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
       columnizedBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
-      fieldOffsets[i + 1] = fieldOffsets[i] + additionalInfo[i].particleFields;
     }
   }
 
@@ -648,12 +648,9 @@ int ChangaSource::processParticles(
   closeFiles(&writeFileHandle, &readFileHandle, additionalInfo,
              additionalReadFilesHandles);
 
-  delete[] chunkSizes;
   delete[] rawFileBuffers[0];
   delete[] fileBuffers[0];
   delete[] columnizedBuffers[0];
-  delete[] bytesLeftPerFile;
-  delete[] fieldOffsets;
   if (!additionalInfo.empty()) {
     for (int i = 0; i < additionalInfo.size(); i++) {
       delete[] rawFileBuffers[i + 1];
