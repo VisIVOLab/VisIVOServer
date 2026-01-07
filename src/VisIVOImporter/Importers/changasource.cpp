@@ -238,11 +238,9 @@ ChangaSource::populateBlocks(Particle particleType,
     break;
   }
 
-  if (!additionalInfo.empty()) {
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      for (int j = 0; j < additionalInfo[i].fieldsName.size(); j++) {
-        blocks.push_back(additionalInfo[i].fieldsName[j]);
-      }
+  for (int i = 0; i < additionalInfo.size(); i++) {
+    for (int j = 0; j < additionalInfo[i].fieldsName.size(); j++) {
+      blocks.push_back(additionalInfo[i].fieldsName[j]);
     }
   }
 
@@ -315,8 +313,7 @@ void ChangaSource::columnizeBuffer(float *columnBuffer, float *originalBuffer,
  */
 int ChangaSource::closeFiles(MPI_File *writeFileHandle,
                              MPI_File *readFileHandle,
-                             std::vector<additionalMpiInfo> additionalInfo,
-                             MPI_File *additionalReadFilesHandles) {
+                             std::vector<MPI_File> additionalReadFilesHandles) {
   int code;
   code = MPI_File_close(readFileHandle);
   if (code != MPI_SUCCESS) {
@@ -332,14 +329,12 @@ int ChangaSource::closeFiles(MPI_File *writeFileHandle,
     return 1;
   }
 
-  if (!additionalInfo.empty()) {
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      code = MPI_File_close(&additionalReadFilesHandles[i]);
-      if (code != MPI_SUCCESS) {
-        std::cerr << "Failed to close read file." << std::endl;
-        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-        return 1;
-      }
+  for (int i = 0; i < additionalReadFilesHandles.size(); i++) {
+    code = MPI_File_close(&additionalReadFilesHandles[i]);
+    if (code != MPI_SUCCESS) {
+      std::cerr << "Failed to close read file." << std::endl;
+      MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+      return 1;
     }
   }
   return 0;
@@ -401,7 +396,7 @@ int ChangaSource::processParticles(
   }
 
   MPI_File readFileHandle;
-  MPI_File *additionalReadFilesHandles;
+  std::vector<MPI_File> additionalReadFilesHandles(additionalInfo.size());
   int readFileAmode = MPI_MODE_RDONLY;
   int code;
 
@@ -422,31 +417,28 @@ int ChangaSource::processParticles(
     return 1;
   }
 
-  if (!additionalInfo.empty()) {
-    additionalReadFilesHandles = new MPI_File[additionalInfo.size()];
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      additionalParticleFields += additionalInfo[i].particleFields;
-      code = MPI_File_open(MPI_COMM_WORLD, additionalInfo[i].filename.c_str(),
-                           readFileAmode, MPI_INFO_NULL,
-                           &additionalReadFilesHandles[i]);
-      if (code != MPI_SUCCESS) {
-        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-        return 1;
-      }
+  for (int i = 0; i < additionalInfo.size(); i++) {
+    additionalParticleFields += additionalInfo[i].particleFields;
+    code = MPI_File_open(MPI_COMM_WORLD, additionalInfo[i].filename.c_str(),
+                         readFileAmode, MPI_INFO_NULL,
+                         &additionalReadFilesHandles[i]);
+    if (code != MPI_SUCCESS) {
+      MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+      return 1;
+    }
 
-      headerSize =
-          additionalInfo[i].headerSize +
-          (startParticle * additionalInfo[i].particleFields * sizeof(float));
-      headerSize += info[particleType].localDisplacement *
-                    additionalInfo[i].particleFields * sizeof(float);
+    headerSize =
+        additionalInfo[i].headerSize +
+        (startParticle * additionalInfo[i].particleFields * sizeof(float));
+    headerSize += info[particleType].localDisplacement *
+                  additionalInfo[i].particleFields * sizeof(float);
 
-      code = MPI_File_seek(additionalReadFilesHandles[i], headerSize,
-                           MPI_SEEK_SET);
-      if (code != MPI_SUCCESS) {
-        std::cerr << "Failed to seek." << std::endl;
-        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-        return 1;
-      }
+    code =
+        MPI_File_seek(additionalReadFilesHandles[i], headerSize, MPI_SEEK_SET);
+    if (code != MPI_SUCCESS) {
+      std::cerr << "Failed to seek." << std::endl;
+      MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+      return 1;
     }
   }
 
@@ -516,22 +508,19 @@ int ChangaSource::processParticles(
   float **columnizedBuffers = new float *[1 + additionalInfo.size()];
   columnizedBuffers[0] = new float[chunkSizes[0] / sizeof(float)];
 
-  if (!additionalInfo.empty()) {
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      chunkSizes[i + 1] = (chunkSizes[0] / (particleFields * sizeof(float))) *
-                          additionalInfo[i].particleFields * sizeof(float);
-      totalChunkSize += chunkSizes[i + 1];
-      bytesLeftPerFile[i + 1] = info[particleType].localNumParticles *
-                                additionalInfo[i].particleFields *
-                                sizeof(float);
-      fieldOffsets[i + 1] = fieldOffsets[i] + additionalInfo[i].particleFields;
-      rawFileBuffers[i + 1] = new uint8_t[chunkSizes[i + 1]];
-      fileBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
-      columnizedBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
-    }
+  for (int i = 0; i < additionalInfo.size(); i++) {
+    chunkSizes[i + 1] = (chunkSizes[0] / (particleFields * sizeof(float))) *
+                        additionalInfo[i].particleFields * sizeof(float);
+    totalChunkSize += chunkSizes[i + 1];
+    bytesLeftPerFile[i + 1] = info[particleType].localNumParticles *
+                              additionalInfo[i].particleFields * sizeof(float);
+    fieldOffsets[i + 1] = fieldOffsets[i] + additionalInfo[i].particleFields;
+    rawFileBuffers[i + 1] = new uint8_t[chunkSizes[i + 1]];
+    fileBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
+    columnizedBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
   }
 
-  size_t *bytesToReadPerFile = new size_t[1 + additionalInfo.size()];
+  std::vector<size_t> bytesToReadPerFile(1 + additionalInfo.size());
   size_t totalBytesLeft = info[particleType].localNumParticles *
                           (particleFields + additionalParticleFields) *
                           sizeof(float);
@@ -561,14 +550,12 @@ int ChangaSource::processParticles(
                   MPI_UINT8_T, &status);
     particlesRead = bytesToReadPerFile[0] / (particleFields * sizeof(float));
 
-    if (!additionalInfo.empty()) {
-      for (int i = 0; i < additionalInfo.size(); i++) {
-        bytesToReadPerFile[i + 1] =
-            particlesRead * additionalInfo[i].particleFields * sizeof(float);
-        totalBytesToRead += bytesToReadPerFile[i + 1];
-        MPI_File_read(additionalReadFilesHandles[i], rawFileBuffers[i + 1],
-                      bytesToReadPerFile[i + 1], MPI_UINT8_T, &status);
-      }
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      bytesToReadPerFile[i + 1] =
+          particlesRead * additionalInfo[i].particleFields * sizeof(float);
+      totalBytesToRead += bytesToReadPerFile[i + 1];
+      MPI_File_read(additionalReadFilesHandles[i], rawFileBuffers[i + 1],
+                    bytesToReadPerFile[i + 1], MPI_UINT8_T, &status);
     }
 
     totalBytesLeft -= particlesRead *
@@ -576,18 +563,14 @@ int ChangaSource::processParticles(
                       sizeof(float);
 
     bytesLeftPerFile[0] -= bytesToReadPerFile[0];
-    if (!additionalInfo.empty()) {
-      for (int i = 0; i < additionalInfo.size(); i++) {
-        bytesLeftPerFile[i + 1] -= bytesToReadPerFile[i + 1];
-      }
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      bytesLeftPerFile[i + 1] -= bytesToReadPerFile[i + 1];
     }
 
     swapEndianness(rawFileBuffers[0], bytesToReadPerFile[0], fileBuffers[0]);
-    if (!additionalInfo.empty()) {
-      for (int i = 0; i < additionalInfo.size(); i++) {
-        swapEndianness(rawFileBuffers[i + 1], bytesToReadPerFile[i + 1],
-                       fileBuffers[i + 1]);
-      }
+    for (int i = 0; i < additionalInfo.size(); i++) {
+      swapEndianness(rawFileBuffers[i + 1], bytesToReadPerFile[i + 1],
+                     fileBuffers[i + 1]);
     }
 
     for (int field = 0; field < particleFields + additionalParticleFields;
@@ -645,19 +628,15 @@ int ChangaSource::processParticles(
     currentFile = 0;
   }
 
-  closeFiles(&writeFileHandle, &readFileHandle, additionalInfo,
-             additionalReadFilesHandles);
+  closeFiles(&writeFileHandle, &readFileHandle, additionalReadFilesHandles);
 
   delete[] rawFileBuffers[0];
   delete[] fileBuffers[0];
   delete[] columnizedBuffers[0];
-  if (!additionalInfo.empty()) {
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      delete[] rawFileBuffers[i + 1];
-      delete[] columnizedBuffers[i + 1];
-      delete[] fileBuffers[i + 1];
-    }
-    delete[] additionalReadFilesHandles;
+  for (int i = 0; i < additionalInfo.size(); i++) {
+    delete[] rawFileBuffers[i + 1];
+    delete[] columnizedBuffers[i + 1];
+    delete[] fileBuffers[i + 1];
   }
   delete[] rawFileBuffers;
   delete[] columnizedBuffers;

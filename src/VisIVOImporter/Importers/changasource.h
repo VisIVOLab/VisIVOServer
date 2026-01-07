@@ -57,8 +57,7 @@ public:
   void columnizeBuffer(float *columnBuffer, float *originalBuffer, int length,
                        int rows, int currentRow);
   int closeFiles(MPI_File *writeFileHandle, MPI_File *readFileHandle,
-                 std::vector<additionalMpiInfo> additionalInfo,
-                 MPI_File *additionalReadFilesHandles);
+                 std::vector<MPI_File>);
   int processParticles(Particle particleType, std::vector<mpiProcessInfo> info,
                        std::vector<additionalMpiInfo> additionalInfo);
 
