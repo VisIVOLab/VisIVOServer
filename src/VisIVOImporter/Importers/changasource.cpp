@@ -247,20 +247,137 @@ ChangaSource::populateBlocks(Particle particleType,
   return blocks;
 }
 
+bool ChangaSource::readNextChunk(particleChunk &chunk,
+                                 particleReadContext &ctx) {
+  MPI_Status status;
+  size_t structsLeft;
+  size_t totalBytesToRead;
+
+  if (ctx.bytesLeftPerFile[0] >= ctx.chunkSizes[0]) {
+    chunk.bytesToReadPerFile[0] = ctx.chunkSizes[0];
+  } else {
+    structsLeft =
+        ctx.bytesLeftPerFile[0] / (chunk.particleFields * sizeof(float));
+    chunk.bytesToReadPerFile[0] =
+        structsLeft * chunk.particleFields * sizeof(float);
+    if (chunk.bytesToReadPerFile[0] == 0)
+      return false;
+  }
+  totalBytesToRead = chunk.bytesToReadPerFile[0];
+
+  MPI_File_read(ctx.readFileHandle, chunk.rawFileBuffers[0],
+                chunk.bytesToReadPerFile[0], MPI_UINT8_T, &status);
+  chunk.particlesRead =
+      chunk.bytesToReadPerFile[0] / (chunk.particleFields * sizeof(float));
+
+  for (int i = 0; i < chunk.additionalInfo.size(); i++) {
+    chunk.bytesToReadPerFile[i + 1] = chunk.particlesRead *
+                                      chunk.additionalInfo[i].particleFields *
+                                      sizeof(float);
+    totalBytesToRead += chunk.bytesToReadPerFile[i + 1];
+    MPI_File_read(ctx.additionalReadFilesHandles[i],
+                  chunk.rawFileBuffers[i + 1], chunk.bytesToReadPerFile[i + 1],
+                  MPI_UINT8_T, &status);
+  }
+
+  ctx.totalBytesLeft -=
+      chunk.particlesRead *
+      (chunk.particleFields + chunk.additionalParticleFields) * sizeof(float);
+
+  ctx.bytesLeftPerFile[0] -= chunk.bytesToReadPerFile[0];
+  for (int i = 0; i < chunk.additionalInfo.size(); i++) {
+    ctx.bytesLeftPerFile[i + 1] -= chunk.bytesToReadPerFile[i + 1];
+  }
+
+  return true;
+}
+
+void ChangaSource::elaborateChunk(particleChunk &chunk) {
+  swapEndianness(chunk.rawFileBuffers[0], chunk.bytesToReadPerFile[0],
+                 chunk.fileBuffers[0]);
+  for (int i = 0; i < chunk.additionalInfo.size(); i++) {
+    swapEndianness(chunk.rawFileBuffers[i + 1], chunk.bytesToReadPerFile[i + 1],
+                   chunk.fileBuffers[i + 1]);
+  }
+}
+
+void ChangaSource::writeChunk(particleChunk &chunk, particleWriteContext &ctx) {
+  int localField = 0;
+  MPI_Offset writeFileOffset;
+  MPI_Status status;
+
+  for (int field = 0;
+       field < chunk.particleFields + chunk.additionalParticleFields; ++field) {
+    if (field < chunk.particleFields) {
+      chunk.currentFile = 0;
+      localField = field;
+    } else {
+      for (int j = 0; j < chunk.additionalInfo.size() + 1; j++) {
+        if (field < (ctx.fieldOffsets[j] + chunk.particleFields)) {
+          chunk.currentFile = j;
+          break;
+        }
+      }
+      localField = field - (ctx.fieldOffsets[chunk.currentFile - 1] +
+                            chunk.particleFields);
+    }
+
+    columnizeBuffer(
+        chunk.columnizedBuffers[chunk.currentFile],
+        chunk.fileBuffers[chunk.currentFile], chunk.particlesRead,
+        field < chunk.particleFields
+            ? chunk.particleFields
+            : chunk.additionalInfo[chunk.currentFile - 1].particleFields,
+        localField);
+
+    if (useMemory) {
+      unsigned int colId =
+          memTables[ctx.tableOffset]->getColId(ctx.blocks[field]);
+      if (colId == static_cast<unsigned int>(-1)) {
+        std::cerr << "Invalid column: " << ctx.blocks[field] << std::endl;
+        continue;
+      }
+
+      unsigned int colList[1] = {colId};
+      float *dataPtrs[1] = {chunk.columnizedBuffers[chunk.currentFile]};
+
+      unsigned long long globalRowStart = ctx.particlesProcessedSoFar;
+      unsigned long long globalRowEnd =
+          static_cast<unsigned long long>(ctx.particlesProcessedSoFar +
+                                          chunk.particlesRead) -
+          1;
+
+      memTables[ctx.tableOffset]->putColumn(colList, 1, globalRowStart,
+                                            globalRowEnd, dataPtrs);
+    } else {
+      writeFileOffset =
+          sizeof(float) * (field * ctx.particlesNumber +
+                           (ctx.info[ctx.particleType].localDisplacement +
+                            ctx.particlesProcessedSoFar));
+
+      MPI_File_write_at(ctx.writeFileHandle, writeFileOffset,
+                        chunk.columnizedBuffers[chunk.currentFile],
+                        chunk.particlesRead, MPI_FLOAT, &status);
+    }
+  }
+  ctx.particlesProcessedSoFar += chunk.particlesRead;
+}
+
 /**
  * @brief Swaps the endianness of an array of bytes representing big-endian
  * float values.
  *
  * This function reads a buffer of bytes, converts each value to the host
- * endianness, and stores the resulting floats into a separate output buffer.
+ * endianness, and stores the resulting floats into a separate output
+ * buffer.
  *
  * The conversion is performed in parallel using OpenMP.
  *
- * @param buffer Pointer to the input byte buffer containing big-endian float
- * representations.
+ * @param buffer Pointer to the input byte buffer containing big-endian
+ * float representations.
  * @param bytes Total number of bytes in the input buffer.
- * @param newBuffer Pointer to the output buffer where the converted floats will
- * be stored.
+ * @param newBuffer Pointer to the output buffer where the converted floats
+ * will be stored.
  */
 void ChangaSource::swapEndianness(uint8_t *buffer, size_t bytes,
                                   float *newBuffer) {
@@ -442,6 +559,9 @@ int ChangaSource::processParticles(
     }
   }
 
+  std::vector<std::string> blocks = populateBlocks(
+      particleType, additionalInfo, particleFields + additionalParticleFields);
+
   int tableOffset;
   MPI_File writeFileHandle;
   int writeFileAmode = MPI_MODE_CREATE | MPI_MODE_WRONLY;
@@ -452,9 +572,6 @@ int ChangaSource::processParticles(
 
   std::string pathFileOut = pathFileIn;
   std::string pathHeader;
-
-  std::vector<std::string> blocks = populateBlocks(
-      particleType, additionalInfo, particleFields + additionalParticleFields);
 
   if (rank == 0) {
     pathHeader = pathFileOut + particleStartPath + ".bin";
@@ -526,106 +643,28 @@ int ChangaSource::processParticles(
                           sizeof(float);
   size_t totalBytesToRead;
   size_t structsLeft;
-  int particlesRead;
+  int particlesRead = 0;
   int particlesProcessedSoFar = 0;
-  int currentFile = 0;
-  int localField = 0;
+  unsigned int currentFile = 0;
 
-  MPI_Status status;
-  MPI_Offset writeFileOffset;
+  particleChunk chunk = {
+      particleFields,     additionalParticleFields, particlesRead,
+      bytesToReadPerFile, rawFileBuffers,           fileBuffers,
+      columnizedBuffers,  additionalInfo,           currentFile};
+  particleReadContext readCtx = {totalBytesLeft, bytesLeftPerFile, chunkSizes,
+                                 readFileHandle, additionalReadFilesHandles};
+  particleWriteContext writeCtx = {particlesNumber,
+                                   particlesProcessedSoFar,
+                                   particleType,
+                                   fieldOffsets,
+                                   info,
+                                   writeFileHandle,
+                                   blocks,
+                                   tableOffset};
 
-  // chunked read
-  while (totalBytesLeft > 0) {
-    if (bytesLeftPerFile[0] >= chunkSizes[0]) {
-      bytesToReadPerFile[0] = chunkSizes[0];
-    } else {
-      structsLeft = bytesLeftPerFile[0] / (particleFields * sizeof(float));
-      bytesToReadPerFile[0] = structsLeft * particleFields * sizeof(float);
-      if (bytesToReadPerFile[0] == 0)
-        break;
-    }
-    totalBytesToRead = bytesToReadPerFile[0];
-
-    MPI_File_read(readFileHandle, rawFileBuffers[0], bytesToReadPerFile[0],
-                  MPI_UINT8_T, &status);
-    particlesRead = bytesToReadPerFile[0] / (particleFields * sizeof(float));
-
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      bytesToReadPerFile[i + 1] =
-          particlesRead * additionalInfo[i].particleFields * sizeof(float);
-      totalBytesToRead += bytesToReadPerFile[i + 1];
-      MPI_File_read(additionalReadFilesHandles[i], rawFileBuffers[i + 1],
-                    bytesToReadPerFile[i + 1], MPI_UINT8_T, &status);
-    }
-
-    totalBytesLeft -= particlesRead *
-                      (particleFields + additionalParticleFields) *
-                      sizeof(float);
-
-    bytesLeftPerFile[0] -= bytesToReadPerFile[0];
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      bytesLeftPerFile[i + 1] -= bytesToReadPerFile[i + 1];
-    }
-
-    swapEndianness(rawFileBuffers[0], bytesToReadPerFile[0], fileBuffers[0]);
-    for (int i = 0; i < additionalInfo.size(); i++) {
-      swapEndianness(rawFileBuffers[i + 1], bytesToReadPerFile[i + 1],
-                     fileBuffers[i + 1]);
-    }
-
-    for (int field = 0; field < particleFields + additionalParticleFields;
-         ++field) {
-      if (field < particleFields) {
-        currentFile = 0;
-        localField = field;
-      } else {
-        for (int j = 0; j < additionalInfo.size() + 1; j++) {
-          if (field < (fieldOffsets[j] + particleFields)) {
-            currentFile = j;
-            break;
-          }
-        }
-        localField = field - (fieldOffsets[currentFile - 1] + particleFields);
-      }
-
-      columnizeBuffer(columnizedBuffers[currentFile], fileBuffers[currentFile],
-                      particlesRead,
-                      field < particleFields
-                          ? particleFields
-                          : additionalInfo[currentFile - 1].particleFields,
-                      localField);
-
-      if (useMemory) {
-        unsigned int colId = memTables[tableOffset]->getColId(blocks[field]);
-        if (colId == static_cast<unsigned int>(-1)) {
-          std::cerr << "Invalid column: " << blocks[field] << std::endl;
-          continue;
-        }
-
-        unsigned int colList[1] = {colId};
-        float *dataPtrs[1] = {columnizedBuffers[currentFile]};
-
-        unsigned long long globalRowStart = particlesProcessedSoFar;
-        unsigned long long globalRowEnd =
-            static_cast<unsigned long long>(particlesProcessedSoFar +
-                                            particlesRead) -
-            1;
-
-        memTables[tableOffset]->putColumn(colList, 1, globalRowStart,
-                                          globalRowEnd, dataPtrs);
-      } else {
-        writeFileOffset =
-            sizeof(float) *
-            (field * particlesNumber +
-             (info[particleType].localDisplacement + particlesProcessedSoFar));
-
-        MPI_File_write_at(writeFileHandle, writeFileOffset,
-                          columnizedBuffers[currentFile], particlesRead,
-                          MPI_FLOAT, &status);
-      }
-    }
-    particlesProcessedSoFar += particlesRead;
-    currentFile = 0;
+  while (readNextChunk(chunk, readCtx)) {
+    elaborateChunk(chunk);
+    writeChunk(chunk, writeCtx);
   }
 
   closeFiles(&writeFileHandle, &readFileHandle, additionalReadFilesHandles);

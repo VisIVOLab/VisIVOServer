@@ -41,6 +41,37 @@ typedef struct {
   int localDisplacement;
 } mpiProcessInfo;
 
+typedef struct {
+  int particleFields;
+  int additionalParticleFields;
+  int particlesRead;
+  std::vector<size_t> bytesToReadPerFile;
+  uint8_t **rawFileBuffers;
+  float **fileBuffers;
+  float **columnizedBuffers;
+  std::vector<additionalMpiInfo> additionalInfo;
+  unsigned int currentFile;
+} particleChunk;
+
+typedef struct {
+  size_t totalBytesLeft;
+  std::vector<size_t> bytesLeftPerFile;
+  std::vector<std::size_t> chunkSizes;
+  MPI_File readFileHandle;
+  std::vector<MPI_File> additionalReadFilesHandles;
+} particleReadContext;
+
+typedef struct {
+  int particlesNumber;
+  int particlesProcessedSoFar;
+  Particle particleType;
+  std::vector<int> fieldOffsets;
+  std::vector<mpiProcessInfo> info;
+  MPI_File writeFileHandle;
+  std::vector<std::string> blocks;
+  int tableOffset;
+} particleWriteContext;
+
 class ChangaSource : public AbstractSource {
 public:
   int readHeader();
@@ -53,6 +84,9 @@ public:
   populateBlocks(Particle particleType,
                  std::vector<additionalMpiInfo> additionalInfo,
                  int numberOfFields);
+  bool readNextChunk(particleChunk &chunk, particleReadContext &ctx);
+  void elaborateChunk(particleChunk &chunk);
+  void writeChunk(particleChunk &chunk, particleWriteContext &ctx);
   void swapEndianness(uint8_t *buffer, size_t bytes, float *newBuffer);
   void columnizeBuffer(float *columnBuffer, float *originalBuffer, int length,
                        int rows, int currentRow);
