@@ -33,7 +33,7 @@ typedef struct {
   int particleFields;
   std::vector<std::string> fieldsName;
   std::string filename;
-  std::streamoff headerSize;
+  unsigned long long int headerSize;
 } additionalMpiInfo;
 
 typedef struct {
@@ -45,7 +45,7 @@ typedef struct {
   int particleFields;
   int additionalParticleFields;
   int particlesRead;
-  std::vector<size_t> bytesToReadPerFile;
+  std::vector<unsigned long long int> bytesToReadPerFile;
   uint8_t **rawFileBuffers;
   float **fileBuffers;
   float **columnizedBuffers;
@@ -54,9 +54,9 @@ typedef struct {
 } particleChunk;
 
 typedef struct {
-  size_t totalBytesLeft;
-  std::vector<size_t> bytesLeftPerFile;
-  std::vector<std::size_t> chunkSizes;
+  unsigned long long int totalBytesLeft;
+  std::vector<unsigned long long int> bytesLeftPerFile;
+  std::vector<unsigned long long int> chunkSizes;
   MPI_File readFileHandle;
   std::vector<MPI_File> additionalReadFilesHandles;
 } particleReadContext;
@@ -87,7 +87,6 @@ public:
   bool readNextChunk(particleChunk &chunk, particleReadContext &ctx);
   void elaborateChunk(particleChunk &chunk);
   void writeChunk(particleChunk &chunk, particleWriteContext &ctx);
-  void swapEndianness(uint8_t *buffer, size_t bytes, float *newBuffer);
   void columnizeBuffer(float *columnBuffer, float *originalBuffer, int length,
                        int rows, int currentRow);
   int closeFiles(MPI_File *writeFileHandle, MPI_File *readFileHandle,

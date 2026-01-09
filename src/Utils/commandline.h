@@ -53,6 +53,9 @@ public:
   std::string m_lfn, m_VO, m_outlfn, m_se, m_outPath, m_historyFile;
   int m_fitshdunum;
   bool m_changaDen;
+  bool m_swapEndianness;
+  bool m_chunkSize;
+  unsigned long long int chunkSize;
 
   /*!
   m_currentPath = name including path of input file

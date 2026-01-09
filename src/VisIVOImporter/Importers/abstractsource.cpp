@@ -22,11 +22,8 @@
 
 #include "abstractsource.h"
 #include "historyXmlWriter.h"
-#include "visivoutils.h"
 
-#include <fstream>
 #include <iostream>
-#include <sstream>
 const unsigned int AbstractSource::MAX_LOAD = 1000000;
 const unsigned int AbstractSource::MAX_LARGE_LOAD = 100000000;
 const int AbstractSource::MAX_INT = 200000000;
@@ -72,7 +69,8 @@ void AbstractSource::setPointsFileName(
     long unsigned int points, const char *login, const char *binaryHeader,
     float missing, float text, std::string datasetdList,
     std::vector<std::string> hyperslab, int fitshdunum,
-    std::vector<std::string> fields, bool changaDen)
+    std::vector<std::string> fields, bool changaDen, bool swapEndianness,
+    bool b_chunkSize, unsigned long long int v_chunkSize)
 //---------------------------------------------------------------------
 {
   m_pointsFileName = fileName;
@@ -103,6 +101,9 @@ void AbstractSource::setPointsFileName(
   TEXT_VALUE = text;
   m_fitshdunum = fitshdunum;
   m_changaDen = changaDen;
+  m_swapEndianness = swapEndianness;
+  m_chunkSize = b_chunkSize;
+  chunkSize = v_chunkSize;
 
   return;
 }

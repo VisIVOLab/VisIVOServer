@@ -42,7 +42,9 @@ public:
                          const char *login, const char *binaryHeader,
                          float missing, float text, std::string datasetdList,
                          std::vector<std::string> hyperslab, int fitshdunum,
-                         std::vector<std::string> fields, bool changaDen);
+                         std::vector<std::string> fields, bool changaDen,
+                         bool swapEndianness, bool b_chunkSize,
+                         unsigned long long int v_chunkSize);
 
   void setPointsFileName(const char *fileName, const char *binaryName);
   //     void releaseResources();
@@ -87,6 +89,9 @@ protected:
   int m_fitshdunum;
   bool useMemory;
   bool m_changaDen;
+  bool m_swapEndianness;
+  bool m_chunkSize;
+  unsigned long long int chunkSize;
 
 private:
 };

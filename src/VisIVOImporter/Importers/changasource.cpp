@@ -22,7 +22,6 @@
 #include "mpi.h"
 #include "visivoutils.h"
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -250,8 +249,8 @@ ChangaSource::populateBlocks(Particle particleType,
 bool ChangaSource::readNextChunk(particleChunk &chunk,
                                  particleReadContext &ctx) {
   MPI_Status status;
-  size_t structsLeft;
-  size_t totalBytesToRead;
+  int structsLeft;
+  unsigned long long int totalBytesToRead;
 
   if (ctx.bytesLeftPerFile[0] >= ctx.chunkSizes[0]) {
     chunk.bytesToReadPerFile[0] = ctx.chunkSizes[0];
@@ -292,12 +291,42 @@ bool ChangaSource::readNextChunk(particleChunk &chunk,
   return true;
 }
 
+/**
+ * @brief Elaborates the chunk by conditionally swapping the endianness of the
+ * bytes read.
+ *
+ * This function reads a buffer of bytes, converts each value to the host
+ * endianness, and stores the resulting floats into a separate output
+ * buffer.
+ *
+ * The conversion is performed in parallel using OpenMP.
+ *
+ * @param particleChunk The information about the chunk of particles read.
+ */
 void ChangaSource::elaborateChunk(particleChunk &chunk) {
-  swapEndianness(chunk.rawFileBuffers[0], chunk.bytesToReadPerFile[0],
-                 chunk.fileBuffers[0]);
-  for (int i = 0; i < chunk.additionalInfo.size(); i++) {
-    swapEndianness(chunk.rawFileBuffers[i + 1], chunk.bytesToReadPerFile[i + 1],
-                   chunk.fileBuffers[i + 1]);
+  float f;
+  uint32_t v;
+
+  if (m_swapEndianness) {
+    for (int i = 0; i < chunk.additionalInfo.size() + 1; i++) {
+#pragma omp parallel for
+      for (int j = 0; j < chunk.bytesToReadPerFile[i]; j += 4) {
+        v = (uint32_t(chunk.rawFileBuffers[i][j]) << 24) |
+            (uint32_t(chunk.rawFileBuffers[i][j + 1]) << 16) |
+            (uint32_t(chunk.rawFileBuffers[i][j + 2]) << 8) |
+            (uint32_t(chunk.rawFileBuffers[i][j + 3]));
+        memcpy(&f, &v, 4);
+        chunk.fileBuffers[i][j / 4] = f;
+      }
+    }
+  }
+
+  else {
+    for (int i = 0; i < chunk.additionalInfo.size() + 1; i++) {
+#pragma omp parallel for
+      for (int j = 0; j < chunk.bytesToReadPerFile[i]; j += 4)
+        memcpy(&chunk.fileBuffers[i][j / 4], &chunk.rawFileBuffers[i][j], 4);
+    }
   }
 }
 
@@ -361,35 +390,6 @@ void ChangaSource::writeChunk(particleChunk &chunk, particleWriteContext &ctx) {
     }
   }
   ctx.particlesProcessedSoFar += chunk.particlesRead;
-}
-
-/**
- * @brief Swaps the endianness of an array of bytes representing big-endian
- * float values.
- *
- * This function reads a buffer of bytes, converts each value to the host
- * endianness, and stores the resulting floats into a separate output
- * buffer.
- *
- * The conversion is performed in parallel using OpenMP.
- *
- * @param buffer Pointer to the input byte buffer containing big-endian
- * float representations.
- * @param bytes Total number of bytes in the input buffer.
- * @param newBuffer Pointer to the output buffer where the converted floats
- * will be stored.
- */
-void ChangaSource::swapEndianness(uint8_t *buffer, size_t bytes,
-                                  float *newBuffer) {
-  float f;
-  uint32_t v;
-#pragma omp parallel for
-  for (int i = 0; i < bytes; i += 4) {
-    v = (uint32_t(buffer[i]) << 24) | (uint32_t(buffer[i + 1]) << 16) |
-        (uint32_t(buffer[i + 2]) << 8) | (uint32_t(buffer[i + 3]));
-    memcpy(&f, &v, 4);
-    newBuffer[i / 4] = f;
-  }
 }
 
 /**
@@ -484,7 +484,7 @@ int ChangaSource::processParticles(
   int additionalParticleFields = 0;
   int particlesNumber;
   std::string particleStartPath;
-  std::streamoff headerSize = 8 + 6 * 4;
+  unsigned long long int headerSize = 8 + 6 * 4;
   int startParticle = 0;
 
   switch (particleType) {
@@ -514,11 +514,10 @@ int ChangaSource::processParticles(
 
   MPI_File readFileHandle;
   std::vector<MPI_File> additionalReadFilesHandles(additionalInfo.size());
-  int readFileAmode = MPI_MODE_RDONLY;
   int code;
 
-  code = MPI_File_open(MPI_COMM_WORLD, m_pointsFileName.c_str(), readFileAmode,
-                       MPI_INFO_NULL, &readFileHandle);
+  code = MPI_File_open(MPI_COMM_WORLD, m_pointsFileName.c_str(),
+                       MPI_MODE_RDONLY, MPI_INFO_NULL, &readFileHandle);
   if (code != MPI_SUCCESS) {
     std::cerr << "Failure in opening the file.\n";
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -537,7 +536,7 @@ int ChangaSource::processParticles(
   for (int i = 0; i < additionalInfo.size(); i++) {
     additionalParticleFields += additionalInfo[i].particleFields;
     code = MPI_File_open(MPI_COMM_WORLD, additionalInfo[i].filename.c_str(),
-                         readFileAmode, MPI_INFO_NULL,
+                         MPI_MODE_RDONLY, MPI_INFO_NULL,
                          &additionalReadFilesHandles[i]);
     if (code != MPI_SUCCESS) {
       MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -564,7 +563,6 @@ int ChangaSource::processParticles(
 
   int tableOffset;
   MPI_File writeFileHandle;
-  int writeFileAmode = MPI_MODE_CREATE | MPI_MODE_WRONLY;
   int idx = m_pointsBinaryName.rfind('.');
   std::string pathFileIn = m_pointsBinaryName;
   if (idx != std::string::npos)
@@ -590,9 +588,9 @@ int ChangaSource::processParticles(
   }
 
   else {
-    code = MPI_File_open(MPI_COMM_WORLD,
-                         (pathFileOut + particleStartPath + ".bin").c_str(),
-                         writeFileAmode, MPI_INFO_NULL, &writeFileHandle);
+    code = MPI_File_open(
+        MPI_COMM_WORLD, (pathFileOut + particleStartPath + ".bin").c_str(),
+        MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &writeFileHandle);
     if (code != MPI_SUCCESS) {
       std::cerr << "Failed to open " << particleStartPath << ".bin for writing."
                 << std::endl;
@@ -601,15 +599,17 @@ int ChangaSource::processParticles(
     }
   }
 
-  const size_t RAW_CHUNK_SIZE = 16 * 1024 * 1024; // 16 MB
-  size_t totalChunkSize = 0;
+  const unsigned long long int RAW_CHUNK_SIZE =
+      m_chunkSize ? chunkSize : 16 * 1024 * 1024; // 16 MB
+  unsigned long long int totalChunkSize = 0;
 
-  std::vector<std::size_t> chunkSizes(1 + additionalInfo.size());
+  std::vector<unsigned long long int> chunkSizes(1 + additionalInfo.size());
   chunkSizes[0] = (RAW_CHUNK_SIZE / (particleFields * sizeof(float))) *
                   (particleFields * sizeof(float));
   totalChunkSize += chunkSizes[0];
 
-  std::vector<std::size_t> bytesLeftPerFile(1 + additionalInfo.size());
+  std::vector<unsigned long long int> bytesLeftPerFile(1 +
+                                                       additionalInfo.size());
   bytesLeftPerFile[0] =
       info[particleType].localNumParticles * particleFields * sizeof(float);
 
@@ -637,12 +637,13 @@ int ChangaSource::processParticles(
     columnizedBuffers[i + 1] = new float[chunkSizes[i + 1] / sizeof(float)];
   }
 
-  std::vector<size_t> bytesToReadPerFile(1 + additionalInfo.size());
-  size_t totalBytesLeft = info[particleType].localNumParticles *
-                          (particleFields + additionalParticleFields) *
-                          sizeof(float);
-  size_t totalBytesToRead;
-  size_t structsLeft;
+  std::vector<unsigned long long int> bytesToReadPerFile(1 +
+                                                         additionalInfo.size());
+  unsigned long long int totalBytesLeft =
+      info[particleType].localNumParticles *
+      (particleFields + additionalParticleFields) * sizeof(float);
+  unsigned long long int totalBytesToRead;
+  int structsLeft;
   int particlesRead = 0;
   int particlesProcessedSoFar = 0;
   unsigned int currentFile = 0;
