@@ -319,7 +319,7 @@ void ChangaSource::elaborateChunk(particleChunk &chunk) {
 
   if (m_swapEndianness) {
     for (int i = 0; i < chunk.additionalInfo.size() + 1; i++) {
-#pragma omp parallel for
+#pragma omp parallel for private(f, v)
       for (int j = 0; j < chunk.bytesToReadPerFile[i]; j += 4) {
         v = (uint32_t(chunk.rawFileBuffers[i][j]) << 24) |
             (uint32_t(chunk.rawFileBuffers[i][j + 1]) << 16) |
