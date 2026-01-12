@@ -246,6 +246,16 @@ ChangaSource::populateBlocks(Particle particleType,
   return blocks;
 }
 
+/**
+ * @brief Reads the next chunk basing on the context provided.
+ *
+ * @param particleChunk the particle chunk placeholder in which the results of
+ * the read operation will be stored.
+ * @param particleReadContext the context containing useful information on how
+ * to carry out the operation.
+ *
+ * @return a boolean that indicates whether the operation was successful or not.
+ */
 bool ChangaSource::readNextChunk(particleChunk &chunk,
                                  particleReadContext &ctx) {
   MPI_Status status;
@@ -330,6 +340,14 @@ void ChangaSource::elaborateChunk(particleChunk &chunk) {
   }
 }
 
+/**
+ * @brief Writes the next chunk basing on the context provided.
+ *
+ * @param particleChunk the particle chunk placeholder in which the results of
+ * the read operation are stoed.
+ * @param particleWriteContext the context containing useful information on how
+ * to carry out the operation.
+ */
 void ChangaSource::writeChunk(particleChunk &chunk, particleWriteContext &ctx) {
   int localField = 0;
   MPI_Offset writeFileOffset;
