@@ -87,7 +87,7 @@ public:
                  int numberOfFields);
   bool readNextChunk(particleChunk &chunk, particleReadContext &ctx);
   void elaborateChunk(particleChunk &chunk);
-  void writeChunk(particleChunk &chunk, particleWriteContext &ctx);
+  int writeChunk(particleChunk &chunk, particleWriteContext &ctx);
   void columnizeBuffer(float *columnBuffer, float *originalBuffer, int length,
                        int rows, int currentRow);
   int closeFiles(MPI_File *writeFileHandle, MPI_File *readFileHandle,

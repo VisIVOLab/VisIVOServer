@@ -177,6 +177,8 @@ std::vector<additionalMpiInfo> ChangaSource::elaborateAdditionalInfo() {
         "u",         "uDotBdiss",  "uDotFB",   "uHot"};
 
     for (int i = 0; i < exts.size(); i++) {
+      std::cout << exts[i] << endl;
+      std::cout << m_pointsFileName + "." + exts[i] << endl;
       additionalInfo.push_back(
           {1, {exts[i]}, m_pointsFileName + "." + exts[i], 4});
     }
@@ -270,6 +272,7 @@ bool ChangaSource::readNextChunk(particleChunk &chunk,
   MPI_Status status;
   int structsLeft;
   unsigned long long int totalBytesToRead;
+  int code;
 
   if (ctx.bytesLeftPerFile[0] >= ctx.chunkSizes[0]) {
     chunk.bytesToReadPerFile[0] = ctx.chunkSizes[0];
@@ -283,8 +286,13 @@ bool ChangaSource::readNextChunk(particleChunk &chunk,
   }
   totalBytesToRead = chunk.bytesToReadPerFile[0];
 
-  MPI_File_read(ctx.readFileHandle, chunk.rawFileBuffers[0],
-                chunk.bytesToReadPerFile[0], MPI_UINT8_T, &status);
+  code = MPI_File_read(ctx.readFileHandle, chunk.rawFileBuffers[0],
+                       chunk.bytesToReadPerFile[0], MPI_UINT8_T, &status);
+  if (code != MPI_SUCCESS) {
+    std::cerr << "Failed to read main file." << std::endl;
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    return 1;
+  }
   chunk.particlesRead =
       chunk.bytesToReadPerFile[0] / (chunk.particleFields * sizeof(float));
 
@@ -293,9 +301,15 @@ bool ChangaSource::readNextChunk(particleChunk &chunk,
                                       chunk.additionalInfo[i].particleFields *
                                       sizeof(float);
     totalBytesToRead += chunk.bytesToReadPerFile[i + 1];
-    MPI_File_read(ctx.additionalReadFilesHandles[i],
-                  chunk.rawFileBuffers[i + 1], chunk.bytesToReadPerFile[i + 1],
-                  MPI_UINT8_T, &status);
+    code = MPI_File_read(ctx.additionalReadFilesHandles[i],
+                         chunk.rawFileBuffers[i + 1],
+                         chunk.bytesToReadPerFile[i + 1], MPI_UINT8_T, &status);
+    if (code != MPI_SUCCESS) {
+      std::cerr << "Failed to read additional file: "
+                << chunk.additionalInfo[i].filename << std::endl;
+      MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+      return 1;
+    }
   }
 
   ctx.totalBytesLeft -=
@@ -357,10 +371,11 @@ void ChangaSource::elaborateChunk(particleChunk &chunk) {
  * @param particleWriteContext the context containing useful information on how
  * to carry out the operation.
  */
-void ChangaSource::writeChunk(particleChunk &chunk, particleWriteContext &ctx) {
+int ChangaSource::writeChunk(particleChunk &chunk, particleWriteContext &ctx) {
   int localField = 0;
   MPI_Offset writeFileOffset;
   MPI_Status status;
+  int code;
 
   for (int field = 0;
        field < chunk.particleFields + chunk.additionalParticleFields; ++field) {
@@ -411,12 +426,18 @@ void ChangaSource::writeChunk(particleChunk &chunk, particleWriteContext &ctx) {
                            (ctx.info[ctx.particleType].localDisplacement +
                             ctx.particlesProcessedSoFar));
 
-      MPI_File_write_at(ctx.writeFileHandle, writeFileOffset,
-                        chunk.columnizedBuffers[chunk.currentFile],
-                        chunk.particlesRead, MPI_FLOAT, &status);
+      code = MPI_File_write_at(ctx.writeFileHandle, writeFileOffset,
+                               chunk.columnizedBuffers[chunk.currentFile],
+                               chunk.particlesRead, MPI_FLOAT, &status);
+      if (code != MPI_SUCCESS) {
+        std::cerr << "Failed to write file." << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        return 1;
+      }
     }
   }
   ctx.particlesProcessedSoFar += chunk.particlesRead;
+  return 0;
 }
 
 /**
