@@ -719,8 +719,11 @@ int ChangaSource::readData() {
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  if (rank == 0)
+  if (rank == 0) {
     memTables.reserve(size * 3);
+    std::cout << "Process counts: " << size << endl;
+    std::cout << "Chunk size: " << chunkSize << endl;
+  }
 
   std::vector<mpiProcessInfo> info = distributeInfo();
   std::vector<additionalMpiInfo> additionalInfo = elaborateAdditionalInfo();
