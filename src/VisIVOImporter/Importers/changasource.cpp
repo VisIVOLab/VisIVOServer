@@ -168,9 +168,18 @@ std::vector<mpiProcessInfo> ChangaSource::distributeInfo() {
 std::vector<additionalMpiInfo> ChangaSource::elaborateAdditionalInfo() {
   std::vector<additionalMpiInfo> additionalInfo;
   if (m_changaDen) {
-    std::string denExt = ".den";
-    std::string fileName = m_pointsFileName + denExt;
-    additionalInfo.push_back({1, {"DENSITY"}, fileName, 4});
+    std::vector<std::string> exts = {
+        "BClean",    "BDotBClean", "BDotDiss", "BDotRho",      "BFieldx",
+        "BFieldy",   "BFieldz",    "CurlBx",   "CurlBy",       "CurlBz",
+        "DivB",      "FeMassFrac", "HI",       "HeI",          "HeII",
+        "MassHot",   "OxMassFrac", "Tinc",     "coolontime",   "den",
+        "igasorder", "iord",       "massform", "smoothlength", "timeform",
+        "u",         "uDotBdiss",  "uDotFB",   "uHot"};
+
+    for (int i = 0; i < exts.size(); i++) {
+      additionalInfo.push_back(
+          {1, {exts[i]}, m_pointsFileName + "." + exts[i], 4});
+    }
   }
 
   return additionalInfo;
