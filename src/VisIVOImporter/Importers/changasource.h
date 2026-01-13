@@ -20,6 +20,7 @@
 
 #ifndef CHANGASOURCE_H
 #define CHANGASOURCE_H
+#endif
 
 #include "abstractsource.h"
 
@@ -100,5 +101,3 @@ private:
   int ndark;
   int nstar;
 };
-
-#endif
