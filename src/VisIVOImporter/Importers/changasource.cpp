@@ -177,8 +177,6 @@ std::vector<additionalMpiInfo> ChangaSource::elaborateAdditionalInfo() {
         "u",         "uDotBdiss",  "uDotFB",   "uHot"};
 
     for (int i = 0; i < exts.size(); i++) {
-      std::cout << exts[i] << endl;
-      std::cout << m_pointsFileName + "." + exts[i] << endl;
       additionalInfo.push_back(
           {1, {exts[i]}, m_pointsFileName + "." + exts[i], 4});
     }
