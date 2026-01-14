@@ -45,7 +45,7 @@ typedef struct {
 typedef struct {
   int particleFields;
   int additionalParticleFields;
-  int particlesRead;
+  unsigned long long int particlesRead;
   std::vector<unsigned long long int> bytesToReadPerFile;
   uint8_t **rawFileBuffers;
   float **fileBuffers;
@@ -63,8 +63,8 @@ typedef struct {
 } particleReadContext;
 
 typedef struct {
-  int particlesNumber;
-  int particlesProcessedSoFar;
+  unsigned long long int particlesNumber;
+  unsigned long long int particlesProcessedSoFar;
   Particle particleType;
   std::vector<int> fieldOffsets;
   std::vector<mpiProcessInfo> info;

@@ -530,7 +530,7 @@ int ChangaSource::processParticles(
 
   int particleFields;
   int additionalParticleFields = 0;
-  int particlesNumber;
+  unsigned long long int particlesNumber;
   std::string particleStartPath;
   unsigned long long int headerSize = 8 + 6 * 4;
   int startParticle = 0;
@@ -692,8 +692,8 @@ int ChangaSource::processParticles(
       (particleFields + additionalParticleFields) * sizeof(float);
   unsigned long long int totalBytesToRead;
   int structsLeft;
-  int particlesRead = 0;
-  int particlesProcessedSoFar = 0;
+  unsigned long long int particlesRead = 0;
+  unsigned long long int particlesProcessedSoFar = 0;
   unsigned int currentFile = 0;
 
   particleChunk chunk = {
