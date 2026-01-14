@@ -424,6 +424,8 @@ int ChangaSource::writeChunk(particleChunk &chunk, particleWriteContext &ctx) {
                            (ctx.info[ctx.particleType].localDisplacement +
                             ctx.particlesProcessedSoFar));
 
+      std::cout << "Offset: " << writeFileOffset << endl;
+
       code = MPI_File_write_at(ctx.writeFileHandle, writeFileOffset,
                                chunk.columnizedBuffers[chunk.currentFile],
                                chunk.particlesRead, MPI_FLOAT, &status);
@@ -747,8 +749,8 @@ int ChangaSource::readData() {
   std::vector<mpiProcessInfo> info = distributeInfo();
   std::vector<additionalMpiInfo> additionalInfo = elaborateAdditionalInfo();
 
-  processParticles(GAS, info, additionalInfo);
-  processParticles(DARK, info, additionalInfo);
+  // processParticles(GAS, info, additionalInfo);
+  // processParticles(DARK, info, additionalInfo);
   processParticles(STAR, info, additionalInfo);
 
   MPI_Finalize();
