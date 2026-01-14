@@ -748,8 +748,8 @@ int ChangaSource::readData() {
   std::vector<additionalMpiInfo> additionalInfo = elaborateAdditionalInfo();
 
   processParticles(GAS, info, additionalInfo);
-  // processParticles(DARK, info, additionalInfo);
-  // processParticles(STAR, info, additionalInfo);
+  processParticles(DARK, info, additionalInfo);
+  processParticles(STAR, info, additionalInfo);
 
   MPI_Finalize();
 
