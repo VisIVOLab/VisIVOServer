@@ -83,7 +83,7 @@ public:
   std::vector<additionalMpiInfo> elaborateAdditionalInfo();
   std::vector<std::string>
   populateBlocks(Particle particleType,
-                 std::vector<additionalMpiInfo> additionalInfo,
+                 const std::vector<additionalMpiInfo> &additionalInfo,
                  int numberOfFields);
   bool readNextChunk(particleChunk &chunk, particleReadContext &ctx);
   void elaborateChunk(particleChunk &chunk);

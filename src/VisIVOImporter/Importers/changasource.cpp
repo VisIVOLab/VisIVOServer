@@ -197,59 +197,35 @@ std::vector<additionalMpiInfo> ChangaSource::elaborateAdditionalInfo() {
  *
  * @return a vector of string containing the names of the fields.
  */
-std::vector<std::string>
-ChangaSource::populateBlocks(Particle particleType,
-                             std::vector<additionalMpiInfo> additionalInfo,
-                             int numberOfFields) {
+std::vector<std::string> ChangaSource::populateBlocks(
+    Particle particleType, const std::vector<additionalMpiInfo> &additionalInfo,
+    int numberOfFields) {
   std::vector<std::string> blocks;
   blocks.reserve(numberOfFields);
+
+  blocks.insert(blocks.end(),
+                {"MASS", "POS_X", "POS_Y", "POS_Z", "VEL_X", "VEL_Y", "VEL_Z"});
+
   switch (particleType) {
   case GAS:
-    blocks.push_back("MASS");
-    blocks.push_back("POS_X");
-    blocks.push_back("POS_Y");
-    blocks.push_back("POS_Z");
-    blocks.push_back("VEL_X");
-    blocks.push_back("VEL_y");
-    blocks.push_back("VEL_Z");
-    blocks.push_back("RHO");
-    blocks.push_back("TEMP");
-    blocks.push_back("EPS");
-    blocks.push_back("METALS");
-    blocks.push_back("PHI");
+    blocks.insert(blocks.end(), {"RHO", "TEMP", "EPS", "METALS", "PHI"});
     break;
+
   case DARK:
-    blocks.push_back("MASS");
-    blocks.push_back("POS_X");
-    blocks.push_back("POS_Y");
-    blocks.push_back("POS_Z");
-    blocks.push_back("VEL_X");
-    blocks.push_back("VEL_y");
-    blocks.push_back("VEL_Z");
-    blocks.push_back("EPS");
-    blocks.push_back("PHI");
+    blocks.insert(blocks.end(), {"EPS", "PHI"});
     break;
+
   case STAR:
-    blocks.push_back("MASS");
-    blocks.push_back("POS_X");
-    blocks.push_back("POS_Y");
-    blocks.push_back("POS_Z");
-    blocks.push_back("VEL_X");
-    blocks.push_back("VEL_y");
-    blocks.push_back("VEL_Z");
-    blocks.push_back("METALS");
-    blocks.push_back("TFORM");
-    blocks.push_back("EPS");
-    blocks.push_back("PHI");
+    blocks.insert(blocks.end(), {"METALS", "TFORM", "EPS", "PHI"});
     break;
+
   default:
+    blocks.clear();
     break;
   }
 
-  for (int i = 0; i < additionalInfo.size(); i++) {
-    for (int j = 0; j < additionalInfo[i].fieldsName.size(); j++) {
-      blocks.push_back(additionalInfo[i].fieldsName[j]);
-    }
+  for (const auto &info : additionalInfo) {
+    blocks.insert(blocks.end(), info.fieldsName.begin(), info.fieldsName.end());
   }
 
   return blocks;
@@ -646,7 +622,7 @@ int ChangaSource::processParticles(
   }
 
   const unsigned long long int RAW_CHUNK_SIZE =
-      m_chunkSize ? chunkSize : 16 * 1024 * 1024; // 16 MB
+      m_chunkSize ? chunkSize : particlesNumber / size * sizeof(float);
   unsigned long long int totalChunkSize = 0;
 
   std::vector<unsigned long long int> chunkSizes(1 + additionalInfo.size());
@@ -738,11 +714,8 @@ int ChangaSource::readData() {
   MPI_Comm_size(MPI_COMM_WORLD, &size);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  if (rank == 0) {
+  if (rank == 0)
     memTables.reserve(size * 3);
-    std::cout << "Process counts: " << size << endl;
-    std::cout << "Chunk size: " << chunkSize << endl;
-  }
 
   std::vector<mpiProcessInfo> info = distributeInfo();
   std::vector<additionalMpiInfo> additionalInfo = elaborateAdditionalInfo();
