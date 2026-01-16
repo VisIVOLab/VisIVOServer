@@ -388,8 +388,6 @@ int CommandLine::parseOption(const std::vector<std::string> arguments)
 
     } else if (arguments[i] == "--inmemory") {
       m_inMemory = true;
-    } else if (arguments[i] == "--changaden") {
-      m_changaDen = true;
     } else if (arguments[i] == "--swap-endianness") {
       m_swapEndianness = true;
     } else if (arguments[i] == "--chunk-size") {
@@ -401,6 +399,15 @@ int CommandLine::parseOption(const std::vector<std::string> arguments)
         return -1;
       }
       chunkSize = strtoull(arguments[++i].c_str(), nullptr, 10);
+    } else if (arguments[i] == "--config-file") {
+      m_configFile = true;
+      std::string ckInput = arguments[i + 1];
+      if (ckInput.find_first_of('-') == 0) {
+        std::cerr << "Error on " << arguments[i] << " argument: " << ckInput
+                  << std::endl;
+        return -1;
+      }
+      configFileName = arguments[++i];
     }
   }
   m_currentPath =
@@ -653,8 +660,8 @@ int CommandLine::loadFile()
         m_comput, m_file.c_str(), m_endian.c_str(), m_dataType.c_str(),
         m_aliasParticle.c_str(), m_aliasHeader.c_str(), m_npoints,
         m_login.c_str(), m_binaryHeader.c_str(), m_missing, m_text,
-        m_datasetList, m_hyperslab, m_fitshdunum, m_fields, m_changaDen,
-        m_swapEndianness, m_chunkSize, chunkSize);
+        m_datasetList, m_hyperslab, m_fitshdunum, m_fields, m_configFile,
+        configFileName, m_swapEndianness, m_chunkSize, chunkSize);
     if (pSource->readHeader() == 0)
       pSource->readData();
     if (m_historyEnabled) {

@@ -160,26 +160,43 @@ std::vector<mpiProcessInfo> ChangaSource::distributeInfo() {
 }
 
 /**
- * @brief  Elaborates the additional information basing on the variables.
+ * @brief  Elaborates the additional information basing on the file provided.
  *
  *
  * @return a vector containing structures which contains said information.
  */
 std::vector<additionalMpiInfo> ChangaSource::elaborateAdditionalInfo() {
   std::vector<additionalMpiInfo> additionalInfo;
-  if (m_changaDen) {
-    std::vector<std::string> exts = {
-        "BClean",    "BDotBClean", "BDotDiss", "BDotRho",      "BFieldx",
-        "BFieldy",   "BFieldz",    "CurlBx",   "CurlBy",       "CurlBz",
-        "DivB",      "FeMassFrac", "HI",       "HeI",          "HeII",
-        "MassHot",   "OxMassFrac", "Tinc",     "coolontime",   "den",
-        "igasorder", "iord",       "massform", "smoothlength", "timeform",
-        "u",         "uDotBdiss",  "uDotFB",   "uHot"};
 
-    for (int i = 0; i < exts.size(); i++) {
-      additionalInfo.push_back(
-          {1, {exts[i]}, m_pointsFileName + "." + exts[i], 4});
+  if (m_configFile) {
+    std::ifstream file(configFileName);
+
+    if (!file.is_open()) {
+      std::cerr << "Error on configFile open." << std::endl;
+      return additionalInfo;
     }
+
+    additionalMpiInfo info;
+
+    while (file >> info.filename >> info.particleFields) {
+
+      info.fieldsName.clear();
+      info.fieldsName.reserve(info.particleFields);
+
+      for (int i = 0; i < info.particleFields; ++i) {
+        std::string field;
+        if (!(file >> field))
+          return additionalInfo;
+        info.fieldsName.push_back(field);
+      }
+
+      if (!(file >> info.headerSize))
+        return additionalInfo;
+
+      additionalInfo.push_back(info);
+    }
+
+    file.close();
   }
 
   return additionalInfo;
@@ -239,7 +256,8 @@ std::vector<std::string> ChangaSource::populateBlocks(
  * @param particleReadContext the context containing useful information on how
  * to carry out the operation.
  *
- * @return a boolean that indicates whether the operation was successful or not.
+ * @return a boolean that indicates whether the operation was successful or
+ * not.
  */
 bool ChangaSource::readNextChunk(particleChunk &chunk,
                                  particleReadContext &ctx) {
@@ -342,8 +360,8 @@ void ChangaSource::elaborateChunk(particleChunk &chunk) {
  *
  * @param particleChunk the particle chunk placeholder in which the results of
  * the read operation are stoed.
- * @param particleWriteContext the context containing useful information on how
- * to carry out the operation.
+ * @param particleWriteContext the context containing useful information on
+ * how to carry out the operation.
  */
 int ChangaSource::writeChunk(particleChunk &chunk, particleWriteContext &ctx) {
   int localField = 0;
@@ -443,10 +461,11 @@ void ChangaSource::columnizeBuffer(float *columnBuffer, float *originalBuffer,
  *
  * @param writeFileHandle Pointer to the MPI file handle used for writing.
  * @param readFileHandle  Pointer to the MPI file handle used for reading.
- * @param additionalInfo  Vector containing metadata for any additional MPI read
- * files. Its size determines how many additional file handles must be closed.
- * @param additionalReadFilesHandles Array of MPI file handles corresponding to
- * the entries in additionalInfo.
+ * @param additionalInfo  Vector containing metadata for any additional MPI
+ * read files. Its size determines how many additional file handles must be
+ * closed.
+ * @param additionalReadFilesHandles Array of MPI file handles corresponding
+ * to the entries in additionalInfo.
  *
  * @return an int = 0 if successful, 1 otherwise.
  */
@@ -482,9 +501,9 @@ int ChangaSource::closeFiles(MPI_File *writeFileHandle,
 /**
  * @brief Processes all the particles within the standard files.
  *
- * This function chunk-reads, -elaborates, and -writes the information regarding
- * the particles within the standard extension files using MPI and OpenMP for
- * different tasks inside the function.
+ * This function chunk-reads, -elaborates, and -writes the information
+ * regarding the particles within the standard extension files using MPI and
+ * OpenMP for different tasks inside the function.
  *
  * @param particleType an enum that specifies the type of the particle to
  * work with.
@@ -561,6 +580,8 @@ int ChangaSource::processParticles(
                          MPI_MODE_RDONLY, MPI_INFO_NULL,
                          &additionalReadFilesHandles[i]);
     if (code != MPI_SUCCESS) {
+      std::cerr << "Failed to open additional file: "
+                << additionalInfo[i].filename.c_str() << std::endl;
       MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
       return 1;
     }
@@ -720,9 +741,9 @@ int ChangaSource::readData() {
   std::vector<mpiProcessInfo> info = distributeInfo();
   std::vector<additionalMpiInfo> additionalInfo = elaborateAdditionalInfo();
 
-  processParticles(GAS, info, additionalInfo);
-  processParticles(DARK, info, additionalInfo);
-  processParticles(STAR, info, additionalInfo);
+  // processParticles(GAS, info, additionalInfo);
+  // processParticles(DARK, info, additionalInfo);
+  // processParticles(STAR, info, additionalInfo);
 
   MPI_Finalize();
 

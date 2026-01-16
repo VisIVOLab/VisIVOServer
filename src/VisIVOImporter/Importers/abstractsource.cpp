@@ -69,8 +69,9 @@ void AbstractSource::setPointsFileName(
     long unsigned int points, const char *login, const char *binaryHeader,
     float missing, float text, std::string datasetdList,
     std::vector<std::string> hyperslab, int fitshdunum,
-    std::vector<std::string> fields, bool changaDen, bool swapEndianness,
-    bool b_chunkSize, unsigned long long int v_chunkSize)
+    std::vector<std::string> fields, bool b_configFile,
+    std::string v_configFileName, bool swapEndianness, bool b_chunkSize,
+    unsigned long long int v_chunkSize)
 //---------------------------------------------------------------------
 {
   m_pointsFileName = fileName;
@@ -100,7 +101,8 @@ void AbstractSource::setPointsFileName(
   MISSING_VALUE = missing;
   TEXT_VALUE = text;
   m_fitshdunum = fitshdunum;
-  m_changaDen = changaDen;
+  m_configFile = b_configFile;
+  configFileName = v_configFileName;
   m_swapEndianness = swapEndianness;
   m_chunkSize = b_chunkSize;
   chunkSize = v_chunkSize;
