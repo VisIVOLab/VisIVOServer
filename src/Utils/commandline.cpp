@@ -399,7 +399,7 @@ int CommandLine::parseOption(const std::vector<std::string> arguments)
         return -1;
       }
       chunkSize = strtoull(arguments[++i].c_str(), nullptr, 10);
-    } else if (arguments[i] == "--config-file") {
+    } else if (arguments[i] == "--list-auxiliary-file") {
       m_configFile = true;
       std::string ckInput = arguments[i + 1];
       if (ckInput.find_first_of('-') == 0) {
