@@ -132,8 +132,8 @@ std::vector<mpiProcessInfo> ChangaSource::distributeInfo() {
 
   if (rank == 0) {
     allData.reserve(size * this->typesOfParticle);
-    unsigned long long int base, remainder;
-    unsigned long long int count, displacement;
+    int base, remainder;
+    int count, displacement;
     for (int i = 0; i < size; i++) {
       if (i == 0)
         displacement = 0;

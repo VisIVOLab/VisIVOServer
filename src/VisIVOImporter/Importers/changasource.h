@@ -38,8 +38,8 @@ typedef struct {
 } additionalMpiInfo;
 
 typedef struct {
-  unsigned long long int localNumParticles;
-  unsigned long long int localDisplacement;
+  int localNumParticles;
+  int localDisplacement;
 } mpiProcessInfo;
 
 typedef struct {
