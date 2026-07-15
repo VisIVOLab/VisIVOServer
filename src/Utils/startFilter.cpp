@@ -63,6 +63,7 @@
 #include "vsmrcampos.h"
 //#include "vsclustercellop.h"
 #include "vsmuportalop.h"
+#include "vsaddrowsop.h"
 
 #ifdef AHF
 #include "vsahfhalolistop.h"
@@ -157,6 +158,7 @@ startFilter::startFilter(std::map<std::string,std::string> appParameters)
     if(sstreamOp.str()=="mres") idOp=35;
     //if(sstreamOp.str()=="clustercell") idOp=36;
     if(sstreamOp.str()=="poca") idOp=37;
+    if(sstreamOp.str()=="addRows") idOp=38;
     
 #ifdef GLITE
     if(idOp==21 || idOp==22 ||idOp==27 ||idOp==29)
@@ -2143,6 +2145,57 @@ startFilter::startFilter(std::map<std::string,std::string> appParameters)
             }
             break;
         }
+        case 38:
+        //serial
+            if(rank==0)  //serialized
+            {
+                iter =appParameters.find("help");
+                if( iter != appParameters.end())
+                {
+                    VSAddRowsOp op;
+                    op.printHelp();
+                    return;
+                }
+                
+                iter =appParameters.find("file");
+                if( iter == appParameters.end())
+                {
+                    std::cerr <<"No input file table is provided"<<std::endl;
+                    return;
+                }
+                std::stringstream sFilename(iter->second);
+                sFilename>>filename;
+                if(filename.find(".bin") == std::string::npos)
+                    filename.append(".bin");
+                VSTable table(filename);
+                if(!table.tableExist())
+                {
+                    std::cerr <<"No valid input file table is provided"<<std::endl;
+                    return;
+                }
+                
+                
+                VSAddRowsOp op;
+                op.setParameters(appParameters);
+                op.addInput(&table);
+                op.execute();
+                               
+                valOutFilename=op.realOutFilename();
+                if(m_historyEnabled)
+                {
+                    const char* m_historyFile ="hist.xml";
+                    
+                    iter =appParameters.find("historyfile");
+                    if( iter != appParameters.end())
+                    {
+                        m_historyFile = appParameters.find("historyfile")->second.c_str();
+                    }
+                    
+                    op.writeHistory(m_historyFile,m_opName,appParameters,valOutFilename);
+                }
+
+            }
+            break;
             
             /*** Default **/
         default:

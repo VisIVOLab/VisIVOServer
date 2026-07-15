@@ -18,79 +18,88 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-
 #ifndef CHANGASOURCE_H
 #define CHANGASOURCE_H
+#endif
 
 #include "abstractsource.h"
 
-#include <vector>
+#include <mpi.h>
+#include <cstdint>
+
 #include <string>
-#include <rpc/xdr.h>
-#include <rpc/rpc.h>
+#include <vector>
 
+enum Particle { GAS = 0, DARK = 1, STAR = 2 };
 
-struct header
-{
-    double time ;
-    int nbodies ;
-    int ndim ;
-    int nsph ;
-    int ndark ;
-    int nstar ;
-    int pad;
+typedef struct {
+  int particleFields;
+  std::vector<std::string> fieldsName;
+  std::string filename;
+  unsigned long long int headerSize;
+} additionalMpiInfo;
+
+typedef struct {
+  int localNumParticles;
+  int localDisplacement;
+} mpiProcessInfo;
+
+typedef struct {
+  int particleFields;
+  int additionalParticleFields;
+  unsigned long long int particlesRead;
+  std::vector<unsigned long long int> bytesToReadPerFile;
+  uint8_t **rawFileBuffers;
+  float **fileBuffers;
+  float **columnizedBuffers;
+  std::vector<additionalMpiInfo> additionalInfo;
+  unsigned int currentFile;
+} particleChunk;
+
+typedef struct {
+  unsigned long long int totalBytesLeft;
+  std::vector<unsigned long long int> bytesLeftPerFile;
+  std::vector<unsigned long long int> chunkSizes;
+  MPI_File readFileHandle;
+  std::vector<MPI_File> additionalReadFilesHandles;
+} particleReadContext;
+
+typedef struct {
+  unsigned long long int particlesNumber;
+  unsigned long long int particlesProcessedSoFar;
+  Particle particleType;
+  std::vector<int> fieldOffsets;
+  std::vector<mpiProcessInfo> info;
+  MPI_File writeFileHandle;
+  std::vector<std::string> blocks;
+  int tableOffset;
+} particleWriteContext;
+
+class ChangaSource : public AbstractSource {
+public:
+  int readHeader();
+  int readData();
+  ~ChangaSource();
+  ChangaSource();
+  std::vector<mpiProcessInfo> distributeInfo();
+  std::vector<additionalMpiInfo> elaborateAdditionalInfo();
+  std::vector<std::string>
+  populateBlocks(Particle particleType,
+                 const std::vector<additionalMpiInfo> &additionalInfo,
+                 int numberOfFields);
+  bool readNextChunk(particleChunk &chunk, particleReadContext &ctx);
+  void elaborateChunk(particleChunk &chunk);
+  int writeChunk(particleChunk &chunk, particleWriteContext &ctx);
+  void columnizeBuffer(float *columnBuffer, float *originalBuffer, int length,
+                       int rows, int currentRow);
+  int closeFiles(MPI_File *writeFileHandle, MPI_File *readFileHandle,
+                 std::vector<MPI_File>);
+  int processParticles(Particle particleType, std::vector<mpiProcessInfo> info,
+                       std::vector<additionalMpiInfo> additionalInfo);
+
+private:
+  const int typesOfParticle = 3;
+  int nsph;
+  int ndark;
+  int nstar;
 };
-
-struct gas_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float rho;
-    float temp;
-    float eps;
-    float metals ;
-    float phi ;
-};
-
-struct dark_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float eps;
-    float phi ;
-};
-
-struct star_particle {
-    float mass;
-    float pos[3];
-    float vel[3];
-    float metals ;
-    float tform ;
-    float eps;
-    float phi ;
-};
-
-class ChangaSource : public AbstractSource
-   
-{
-  public:
-    int readHeader();
-    int readData();
-    ~ChangaSource();
-    ChangaSource();
-  private:
-
-    int xdr_header(struct header *, XDR);
-    std::vector <std::string> m_fieldsNames;   
-    unsigned int      npart_total[6];
-    XDR xdrread;
-    FILE *fpread;
-    int nsph;
-    int ndark;
-    int nstar;
-    char m_dataType, m_Endian;
-  
-};
-  
-
-#endif

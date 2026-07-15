@@ -37,6 +37,8 @@ set(IMPORTER_SOURCE
     ${IMPORTER_SOURCE_DIR}/Importers/asciisource.h
     ${IMPORTER_SOURCE_DIR}/Importers/binsource.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/binsource.h
+    ${IMPORTER_SOURCE_DIR}/Importers/changasource.cpp
+    ${IMPORTER_SOURCE_DIR}/Importers/changasource.h
     ${IMPORTER_SOURCE_DIR}/Importers/csvsource.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/csvsource.h
     ${IMPORTER_SOURCE_DIR}/Importers/fitsimagesource.cpp
@@ -60,13 +62,6 @@ set(IMPORTER_SOURCE
     ${IMPORTER_SOURCE_DIR}/Importers/vosourcenew.cpp
     ${IMPORTER_SOURCE_DIR}/Importers/vosourcenew.h
 )
-
-if(HAS_CHANGA_IMPORTER)
-    list(APPEND IMPORTER_SOURCE
-        ${IMPORTER_SOURCE_DIR}/Importers/changasource.cpp
-        ${IMPORTER_SOURCE_DIR}/Importers/changasource.h
-    )
-endif()
 
 if(HAS_HECUBA_IMPORTER)
     list(APPEND IMPORTER_SOURCE
@@ -374,14 +369,6 @@ target_link_libraries(VisIVOApi PRIVATE
     ${HDF5_LIBRARIES}
     ${VTK_LIBRARIES}
 )
-
-if(HAS_CHANGA_IMPORTER)
-    find_library(TIRPC_LIBRARIES
-        NAMES tirpc
-    )
-    target_link_libraries(VisIVOApi PRIVATE ${TIRPC_LIBRARIES})
-    target_compile_definitions(VisIVOApi PRIVATE HAS_CHANGA_IMPORTER=1)
-endif()
 
 if(HAS_HECUBA_IMPORTER)
     set(HECUBA_ROOT "/usr/local" CACHE PATH "Path to Hecuba installation")
