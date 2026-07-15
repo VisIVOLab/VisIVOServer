@@ -29,9 +29,7 @@
 #include "asciisource.h"
 #include "csvsource.h"
 #include "visivoutils.h"
-#ifdef HAS_CHANGA_IMPORTER
 #include "changasource.h"
-#endif
 #include "binsource.h"
 #include "flysource.h"
 #include "gadgetsource.h"
@@ -621,10 +619,8 @@ int CommandLine::loadFile()
       pSource = new HecubaSource();
 #endif
 
-#ifdef HAS_CHANGA_IMPORTER
     else if (m_type == "changa")
       pSource = new ChangaSource();
-#endif
 
 #ifndef LIGHT
     else if (m_type == "xml")

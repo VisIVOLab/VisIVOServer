@@ -27,7 +27,6 @@ set(API_LIGHT_SOURCE_DIR "${CMAKE_SOURCE_DIR}/API_LIGHT")
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-option(HAS_CHANGA_IMPORTER "Enable support for Changa importer" OFF) 
 option(HAS_HECUBA_IMPORTER "Enable support for Hecuba importer" OFF)
 option(INSTALL_API "Enabling VisIVOAPI installation" OFF)
 option(API_LIGHT "Install Light version of VisIVOApi" OFF) 

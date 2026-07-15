@@ -14,6 +14,8 @@ set(FILTERS_SOURCE
     Filters/startFilter.h
     Filters/vsaddidop.cpp
     Filters/vsaddidop.h
+    Filters/vsaddrowsop.cpp
+    Filters/vsaddrowsop.h
     Filters/vsappend.cpp
     Filters/vsappend.h
     Filters/vschangecolnameop.cpp

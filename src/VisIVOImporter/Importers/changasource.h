@@ -25,6 +25,8 @@
 #include "abstractsource.h"
 
 #include <mpi.h>
+#include <cstdint>
+
 #include <string>
 #include <vector>
 

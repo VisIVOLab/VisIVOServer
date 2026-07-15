@@ -348,9 +348,7 @@ void ChangaSource::elaborateChunk(particleChunk &chunk) {
 
   else {
     for (int i = 0; i < chunk.additionalInfo.size() + 1; i++) {
-#pragma omp parallel for
-      for (int j = 0; j < chunk.bytesToReadPerFile[i]; j += 4)
-        memcpy(&chunk.fileBuffers[i][j / 4], &chunk.rawFileBuffers[i][j], 4);
+      memcpy(chunk.fileBuffers[i], chunk.rawFileBuffers[i], chunk.bytesToReadPerFile[i]);
     }
   }
 }
