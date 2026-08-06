@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <chrono>
 #ifdef WIN32
 	#include <direct.h>
 #endif
@@ -36,7 +37,7 @@
 	#include <unistd.h>
 #endif
 
-// extern "C"{
+extern "C"{
 
 // Dichiarazione delle funzioni principali.
 int VI_Import(VisIVOImporter *env);
@@ -83,14 +84,20 @@ void *VI_Import_Thread(void *id)
 	return 0;
 }
 
+void VI_FreeImporter(VisIVOImporter* env) {
+    if (!env) return;
+    delete env->pComLine;  
+}
+
 //---------------------------
 int VI_Import(VisIVOImporter *env)
 //---------------------------
 {
+  auto t0 = std::chrono::steady_clock::now();
 bool fitsRestore=false;
 std::string fitsOriginalName;
 std::string tmpOutName;  
-CommandLine *pComLine=new CommandLine;
+env->pComLine=new CommandLine;
 std::vector<std::string> args;
 
 if(env->setatt[VI_SET_FFORMAT]==0)
@@ -255,7 +262,17 @@ for(int idPar=0; idPar<NPAR; idPar++)
       args.push_back(env->se);
       break;
     }
-  
+     case VI_SET_INMEMORY:
+    {
+      args.push_back("--inmemory");
+      break;
+    }
+     case VI_SET_ALIAS:
+    {
+      args.push_back("--aliasparticle");
+      args.push_back(env->aliasparticle);
+      break;
+    }
    } //switch
   }//if
 }
@@ -302,18 +319,25 @@ for(int idPar=0; idPar<NPAR; idPar++)
 // for(int i=0;i<args.size();i++)std::clog<<args[i]<<" "; 
 //  std::clog<<std::endl<<"test VisIVO Importer"<<std::endl;
   int ret=0;
-  ret=pComLine->parseOption (args );
+  ret=env->pComLine->parseOption (args );
+  auto t1 = std::chrono::steady_clock::now();
+    std::clog << "[TIMER] parseOption: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count() << "ms\n";
+    
   if(ret<0) return invalidImporterOptions;
-  ret=pComLine->loadFile();
+  ret=env->pComLine->loadFile();
+  auto t2 = std::chrono::steady_clock::now();
+    std::clog << "[TIMER] loadFile (incl. readHeader+readData?): "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() << "ms\n";
+    
   if(ret<0) return invalidImporterOperation;
-
  
-  if((pComLine -> getRemoteFile() !="noremote") && !((pComLine -> getType() =="rawpoints") || (pComLine -> getType() =="xml") ) )
+  if((env->pComLine -> getRemoteFile() !="noremote") && !((env->pComLine -> getType() =="rawpoints") || (env->pComLine -> getType() =="xml") ) )
   { 
 	std::string remoteFile;
-	remoteFile=pComLine -> getRemoteFile();
+	remoteFile=env->pComLine -> getRemoteFile();
 	remove(remoteFile.c_str());
-	if(pComLine -> getType() =="binary")
+	if(env->pComLine -> getType() =="binary")
 	{
 		remoteFile=remoteFile.append(".head");
 		remove(remoteFile.c_str());
@@ -330,10 +354,13 @@ for(int idPar=0; idPar<NPAR; idPar++)
   	rename(tmpOutName.c_str(),fitsOriginalName.c_str());
   }
 //  std::cout<<"VisIVOImporter operation done."<<std::endl;		
-  if ( pComLine)
-    delete pComLine ;
+  //if ( pComLine)
+  //  delete pComLine ;
+  if(env->enableInMemory){
+    env->memTables = &(env->pComLine->getTable());
+  }
 
   return 0;
 }
 
-// } //extern "C"
+} //extern "C"

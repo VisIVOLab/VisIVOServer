@@ -27,6 +27,8 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <vstable.h>
+#include <vstablemem.h>
 #include <gtest/gtest.h>
 static const int MAX_FILES = 2000;
 
@@ -199,8 +201,8 @@ struct ProcessingConfig {
         "DUST", // 81
         "SAGE", // 82
         "SZ",  // 83
-        "SSFR" // 84
-        //"PID"   // 85 long long?
+        "SSFR", // 84
+        "PID"   // 85 long long?
     };
 
   const std::vector<int> blockNamesToFields 
@@ -227,13 +229,6 @@ public:
     void setNumFiles(int n);
 
 private:
-    friend class GadgetSourceTest;
-    FRIEND_TEST(GadgetSourceTest, TestDetermineEndianism);
-    FRIEND_TEST(GadgetSourceTest, TestProcessFileName);
-    FRIEND_TEST(GadgetSourceTest, TestComputeFileStartPositions);
-    FRIEND_TEST(GadgetSourceTest, TestSetNumFiles);
-    FRIEND_TEST(GadgetSourceTest, TestComputeTypePositions);
-    FRIEND_TEST(GadgetSourceTest, TestIsValidParticleType);
     std::vector<std::string> m_fieldsNames;
     unsigned int npart_total[6];
     int numFiles = 1;
@@ -244,6 +239,8 @@ private:
     int numBlock;
     bool needSwap;
     int m_sizeBlock[1];
+
+    std::vector<std::vector<std::string> > fieldTypeNames;
     std::vector<std::vector<bool>> blocksFields = 
     { 
       {1,1,1,1,1,1}, // 0: POS, VEL, ID, MASS, IDU, TSTP, POT, ACCE
@@ -301,9 +298,7 @@ private:
           
     long long findBlockOffset(int fileDescriptor, const std::string& targetBlock, bool needSwap);
 
-    void computeChunkSize(int fileIndex, unsigned long long& chunk, 
-                      unsigned long long& n, unsigned long long& Resto, 
-                      unsigned long long minPart[6]);
+    void computeMinPart(int fileIndex, unsigned long long minPart[6]);
 
     void allocateBuffers(int blockSize, unsigned long long chunk, float*& bufferBlock, std::vector<float*>& buffers);
 
@@ -317,12 +312,13 @@ private:
     void allocateBuffers(int blockSize, unsigned long long chunk, std::vector<float*>& buffers);
 
     void processChunk(int fileDescriptor, float* bufferBlock, std::vector<float*>& buffers, 
-                  int blockSize, unsigned long long chunk, long long unsigned int& offset);
+                  int blockSize, unsigned long long chunk, long long unsigned int offset);
 
     void writeChunkData(int outputFile, const std::vector<float*>& buffers, 
-                    unsigned long long chunk, unsigned long long pToStart, 
+                    unsigned long long chunk, unsigned long long writeSize, 
+                    int nBlock, int nFile,
                     unsigned long long chunkIndex, 
-                    int blockSize, int type);              
+                    int blockSize, int type, std::string blockName) ;                
 };
   
 

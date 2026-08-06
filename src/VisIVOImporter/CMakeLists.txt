@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.15)
-
 project(VisIVOImporter CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -10,7 +9,6 @@ find_package(HDF5 REQUIRED)
 find_package(CURL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
-
 find_package(VTK 9.1.0 REQUIRED COMPONENTS
     ChartsCore
     CommonColor
@@ -98,7 +96,6 @@ find_package(VTK 9.1.0 REQUIRED COMPONENTS
     RenderingContext2D
     RenderingCore
     RenderingFreeType
-    RenderingFreeType
     RenderingGL2PSOpenGL2
     RenderingImage
     RenderingLabel
@@ -137,8 +134,8 @@ set(IMPORTER_SOURCE
     Importers/flysource.h
     Importers/gadgetsource.cpp
     Importers/gadgetsource.h
-    Importers/hdf5source.cpp
-    Importers/hdf5source.h
+    #Importers/hdf5source.cpp
+    #Importers/hdf5source.h
     Importers/mainImporter.cpp
     Importers/muportalsource.cpp
     Importers/muportalsource.h
@@ -148,6 +145,8 @@ set(IMPORTER_SOURCE
     Importers/rawgridsource.h
     Importers/rawpointssource.cpp
     Importers/rawpointssource.h
+    Importers/subfindsource.cpp
+    Importers/subfindsource.h
     Importers/vosourcenew.cpp
     Importers/vosourcenew.h
     Importers/vtksource.cpp
@@ -167,34 +166,20 @@ set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/tinyxmlparser.cpp
     ${UTILS_SOURCE_DIR}/visivoutils.cpp
     ${UTILS_SOURCE_DIR}/visivoutils.h
+    ${UTILS_SOURCE_DIR}/vstable.h
+    ${UTILS_SOURCE_DIR}/vstable.cpp
+    ${UTILS_SOURCE_DIR}/vstablemem.h
+    ${UTILS_SOURCE_DIR}/vstablemem.cpp
+    ${UTILS_SOURCE_DIR}/vsobject.h
+    ${UTILS_SOURCE_DIR}/vsobject.cpp
 )
 
-find_package(HDF5 REQUIRED)
-
-add_executable(VisIVOImporter ${IMPORTER_SOURCE} ${UTILS_SOURCE})
-
-target_include_directories(VisIVOImporter PRIVATE 
+add_library(VisIVOImporterLib STATIC ${IMPORTER_SOURCE} ${UTILS_SOURCE})
+target_include_directories(VisIVOImporterLib PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/Importers
     ${UTILS_SOURCE_DIR}
 )
-
-install(TARGETS VisIVOImporter DESTINATION bin)
-
-target_compile_definitions(VisIVOImporter PRIVATE LIGHT)
-
-#Need to update this
-set(HECUBA_ROOT "/home/nicola/.local")
-
-find_library(HECUBA_HFETCH_LIBRARY hfetch PATHS ${HECUBA_ROOT}/lib)
-if(NOT HECUBA_HFETCH_LIBRARY)
-    message(FATAL_ERROR "Hecuba hfetch library not found in ${HECUBA_ROOT}/lib")
-endif()
-
-target_include_directories(VisIVOImporter PRIVATE ${HECUBA_ROOT}/include ${HECUBA_ROOT}/include/hecuba)
-target_link_libraries(VisIVOImporter PRIVATE ${HECUBA_HFETCH_LIBRARY}) 
-set(CXXFLAGS "-fopenmp")
-set(CMAKE_CXX_FLAGS "${CXXFLAGS}")
-target_link_libraries(VisIVOImporter PRIVATE
+target_link_libraries(VisIVOImporterLib PUBLIC
     CFITSIO::CFITSIO
     CURL::libcurl
     ${MPI_C_LIBRARIES}
@@ -203,4 +188,23 @@ target_link_libraries(VisIVOImporter PRIVATE
     stdc++fs
     tirpc
 )
-target_link_libraries(VisIVOImporter PUBLIC MPI::MPI_CXX)
+target_compile_definitions(VisIVOImporterLib PRIVATE LIGHT)
+
+add_executable(VisIVOImporter Importers/mainImporter.cpp)
+target_link_libraries(VisIVOImporter PRIVATE VisIVOImporterLib)
+
+install(TARGETS VisIVOImporter DESTINATION bin)
+
+set(HECUBA_ROOT "$ENV{HOME}/.local" CACHE PATH "Path to the Hecuba installation root")
+
+find_library(HECUBA_HFETCH_LIBRARY hfetch PATHS ${HECUBA_ROOT}/lib)
+if(NOT HECUBA_HFETCH_LIBRARY)
+    message(FATAL_ERROR "Hecuba hfetch library not found in ${HECUBA_ROOT}/lib. "
+                         "Set -DHECUBA_ROOT=/path/to/hecuba when running cmake.")
+endif()
+
+target_include_directories(VisIVOImporter PRIVATE ${HECUBA_ROOT}/include ${HECUBA_ROOT}/include/hecuba)
+target_link_libraries(VisIVOImporter PRIVATE ${HECUBA_HFETCH_LIBRARY})
+set(CXXFLAGS "-fopenmp")
+set(CMAKE_CXX_FLAGS "${CXXFLAGS}")
+target_link_libraries(VisIVOImporter PRIVATE MPI::MPI_CXX)

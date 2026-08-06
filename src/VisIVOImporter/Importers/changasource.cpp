@@ -104,7 +104,6 @@ int ChangaSource::readHeader()
   if(xdr_int(&xdrread, &pad) != TRUE)
     return 1;
 
-  //m_snapformat = 2;
   nsph = curHead.nsph;
   ndark = curHead.ndark;
   nstar = curHead.nstar;
@@ -244,4 +243,10 @@ int ChangaSource::readData()
 	outfile.close();
   
   return 1;
+}
+
+ChangaSource::~ChangaSource() {
+}
+
+ChangaSource::ChangaSource() {
 }

@@ -31,7 +31,10 @@
 #include <StorageObject.h>
 #include <StorageStream.h>
 #include <KeyClass.h>
+#include <vstable.h>
+#include <vstablemem.h>
 #include <ValueClass.h>
+#include <gtest/gtest.h>
 
 class headerObject:public StorageObject{
 public:
@@ -53,10 +56,19 @@ class particleObj:public StorageObject{
         StorageNumpy, starParticle
         );
 };
+/*
 using Key = KeyClass<int32_t>;
 using Value = ValueClass<particleObj>;
 class particleDict : public StorageDict<Key,Value,particleDict>{
 } ;
+*/
+using Key = KeyClass<double, float, float, float, float, float, float>;
+
+using Value = ValueClass<StorageNumpy>;
+
+class Dict: public StorageDict <Key,Value,Dict>, public StorageStream {
+
+};
 class HecubaSource : public AbstractSource
    
 {
@@ -65,9 +77,9 @@ class HecubaSource : public AbstractSource
     int readData();
         
   private:
-    void writeGasParticles(StorageNumpy s);
-    void writeDarkParticles(StorageNumpy s);
-    void writeStarParticles(StorageNumpy s);
+    void writeGasParticles(const StorageNumpy &s);
+    void writeDarkParticles(const StorageNumpy &s);
+    void writeStarParticles(const StorageNumpy &s);
     std::vector <std::string> m_fieldsNames;   
     unsigned int      npart_total[6];
     

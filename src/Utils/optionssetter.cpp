@@ -298,7 +298,7 @@ bool OptionsSetter::readSplocthColumn()
 int OptionsSetter::readData ( )
 //---------------------------------------------------------------------
 {
-	if(!m_vServer.dataRead)
+	if(!m_vServer.dataRead || m_vServer.useMemory)
 		return -1;
   	std::ifstream inFile;
   	inFile.open(m_vServer.path.c_str(), ios::binary);
@@ -1881,6 +1881,53 @@ int OptionsSetter::parseOption (const std::vector<std::string>  arguments )
                 viewParameter["logscale"]="yes";
                 
             }
+
+            else if(arguments[i]=="--autorange")
+            {
+                m_vServer.autoRange="yes";
+                viewParameter["autoRange"]="yes";
+                
+            }
+            
+            else if(arguments[i]=="--usememory")
+            {
+                m_vServer.useMemory=true;
+                useInMemory = true;
+            }
+
+            else if(arguments[i]=="--autorangemin")
+            {
+                std::string ckInput=arguments[i+1];
+                if(ckInput.find_first_of('-')==0)
+                {
+                    std::cerr<<"Error on --autorange argument: "<<ckInput<<std::endl;
+                    return -1;
+                }
+
+                std::stringstream ss1;
+                
+                ss1<<arguments[++i];
+                ss1>>m_vServer.autoRangeMin;
+                m_vServer.setAutoRangeMin = true;
+                viewParameter["autoRangeMin"]=m_vServer.autoRangeMin;
+                
+            }
+            else if(arguments[i]=="--autorangemax")
+            {
+                std::string ckInput=arguments[i+1];
+                if(ckInput.find_first_of('-')==0)
+                {
+                    std::cerr<<"Error on --autorange argument: "<<ckInput<<std::endl;
+                    return -1;
+                }
+                std::stringstream ss1;
+
+                ss1<<arguments[++i];
+                ss1>>m_vServer.autoRangeMax;
+                m_vServer.setAutoRangeMax = true;
+                viewParameter["autoRangeMax"]=m_vServer.autoRangeMax;
+                
+            }
             
             else if (arguments[i]=="--glyphs")
             {
@@ -2270,7 +2317,7 @@ int OptionsSetter::parseOption (const std::vector<std::string>  arguments )
         setColorLut();
     setGlyphs();
     
-    if(!m_vServer.internalData)
+    if(!m_vServer.internalData && !m_vServer.useMemory)
     {
         std::fstream inFile;
         //  std::clog<<m_vServer.path<<std::endl;
@@ -2328,14 +2375,13 @@ int OptionsSetter::parseOption (const std::vector<std::string>  arguments )
             m_vServer.isColorRangeTo=false;
             m_vServer.isColorRangeFrom=false;
         }
-    if(!m_vServer.internalData)
+    if(!m_vServer.internalData && !m_vServer.useMemory)
     {
         if(!readHeader())
             return -1;
         if(!setAxisScalarVectorAndVolumesFields()) return -1; // check for all fields in the table
     }
     //   }
-    
     setNumberImages();
     
     
@@ -2828,7 +2874,7 @@ void OptionsSetter::showHelp()
 {
     
     std::clog<<std::endl;
-    std::clog<<"VisIVOViewer Version 2.2 July 17th 2013 "<<std::endl<<std::endl;
+    std::clog<<"VisIVOViewer Version 3.5.0 March 19th 2025 "<<std::endl<<std::endl;
     
     std::clog<<"     [pathfile] (mandatory) Absolute path file. Path must be the last command(e.g. /home/user/VisivoBinaryTable.bin)"<<std::endl<<std::endl;
     
@@ -2897,7 +2943,7 @@ void OptionsSetter::showHelp()
     
     std::clog<<" --scaleglyphs     (optional)  Enables the geometrical form to be scaled with a scalar field."<<std::endl<<std::endl;
     
-    std::clog<<" --radius  [value}  (optional) Select radius size"<<std::endl<<std::endl;
+    std::clog<<" --radius  [value]  (optional) Select radius size"<<std::endl<<std::endl;
     
     std::clog<<" --height [value]  (optional) Select height size"<<std::endl<<std::endl;
     
@@ -2917,6 +2963,12 @@ void OptionsSetter::showHelp()
     std::clog<<" --vrenderingfield [field]   (optional) To visualize volume rendering you must select this command with --volume and --vrendering (--volume --vrendering --vrenderingfield scalar0)"<<std::endl<<std::endl;
     
     std::clog<<"--shadow (optional) Enables shadow view in the rendering view. "<<std::endl<<std::endl;
+
+    std::clog<<"--autorange (Optional) Enables auto range feature, which allows to get an automatically computed view range for the image. "<<std::endl<<std::endl;
+    
+    std::clog<<"-autorangemin [value] (Optional) Sets the minimum value of view range for the image, it is ignored if --autorange option is not enabled." << std::endl<<std::endl;
+    
+    std::clog<<"-autorangemax [value] (Optional) Sets the maximum value of view range for the image, it is ignored if --autorange option is not enabled." << std::endl<<std::endl;
     
     std::clog<<" --slice   (optional) If you want visualize orthoslice you must select this command with --volume --sliceplane and --vslicefield "<<std::endl<<std::endl;
     
@@ -3552,6 +3604,7 @@ int OptionsSetter::images()
     std::string VSCycleFileList;
     std::string cycleRootName,lfnCycleRootName;
     cycleRootName=m_vServer.imageName;
+
     
     size_t ext;
     ext=cycleRootName.find(".png");
@@ -3686,7 +3739,6 @@ int OptionsSetter::images()
     
     if(m_vServer.cycle && (m_vServer.cycleSkipFrom>=0 && m_vServer.cycleSkipTo >m_vServer.cycleSkipFrom))
         countCycle=m_vServer.cycleSkipFrom;
-    
     for (int i=0;i<=m_vServer.numImageToLoad;i++)
     {
         if(m_vServer.cycle)
@@ -3807,8 +3859,12 @@ int OptionsSetter::images()
                 pp=new PointsSmoothPipe(m_vServer);
             
             else{
-                pp=new PointsPipe(m_vServer); 
+                pp=new PointsPipe(m_vServer);
             }
+            if(useInMemory){
+                pp->setUseMemory(true);
+                pp->setMemTable(table);
+            } 
             errPipe=pp->createPipe();
             std::string fName = pp->saveImageAsPng(m_vServer.numImage);
             

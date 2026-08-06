@@ -73,10 +73,11 @@ struct star_particle {
 class ChangaSource : public AbstractSource
    
 {
-  public: //! Read the headerType2 file and set the basic table parameters
+  public:
     int readHeader();
     int readData();
-        
+    ~ChangaSource();
+    ChangaSource();
   private:
 
     int xdr_header(struct header *, XDR);

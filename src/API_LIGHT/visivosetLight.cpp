@@ -20,7 +20,7 @@
 std::vector<std::string> VFextFile;
 std::vector<std::string> VIextFile;
 
-// extern "C"{
+extern "C"{
   
 int VI_Import(VisIVOImporter *env);
 int VF_Filter(VisIVOFilter *env);
@@ -129,7 +129,13 @@ if(code==VI_SET_LFNOUT)
 	strcpy(env->lfnout,sValue.c_str());
 if(code==VI_SET_SE)
 	strcpy(env->se,sValue.c_str());
-
+if(code==VI_SET_INMEMORY){
+  env->setatt[VI_SET_INMEMORY]=true;
+  env->enableInMemory=true;
+}
+if(code==VI_SET_ALIAS)
+	strcpy(env->aliasparticle,sValue.c_str());
+std::clog<< "End setatt" << std::endl;
 return noError;
 
 } //end VI_SetAtt
@@ -911,4 +917,4 @@ void VA_SetMultiProc(VisIVOAsynchId *id)
 }
 
 //
-// } //extern "C"
+} //extern "C"

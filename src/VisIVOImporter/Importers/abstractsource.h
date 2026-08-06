@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 #include <gtest/gtest.h>
+#include <vstable.h>
+#include <vstablemem.h>
 
 
 class AbstractSource
@@ -50,7 +52,10 @@ class AbstractSource
 //     void releaseResources();
     virtual int readHeader() = 0;
     virtual int readData() = 0;
+    std::vector<VSTable*>& getMemTables();//{return memTables;}
     
+    
+    void setUseMem(bool use) { useMemory = use; }
     int writeHistory (const char* histFile,const char* format,const char* out,const char* tableOrVolume,double comput[],double size[],const char* login, const char* binaryHeader, float missing,float text, const char* endian,const char* type, long unsigned int points, const char* vo, const char* se, const char* lfnout,const char* inputFile);
 
 
@@ -79,7 +84,9 @@ class AbstractSource
     int maxInt(){return MAX_INT;};
     std::vector<std::string>  m_hyperslab;
     std::vector<std::string>  m_fields;
+    std::vector<VSTable*> memTables;
     int m_fitshdunum;
+    bool useMemory;
     private:
 };
 

@@ -227,11 +227,10 @@ int GadgetSource::readData()
 
   initializeParticleCounts(npartTotal64);
 
-
   generateMap(blockData.mapBlockNamesToFields, blockNamesToCompare, blockNamesToFields);
   generateMap(blockData.mapBlockSize, blockNamesToCompare, blockSize);
 
-  std::vector<std::vector<std::string> > namesFields;
+  //std::vector<std::vector<std::string> > namesFields;
   std::vector<std::string> tmpNamesFields;
   std::string pathHeader = "";  int KK=0;
   
@@ -257,6 +256,7 @@ int GadgetSource::readData()
   bool alreadyOpen = false;
   int totBlocks = blockData.listOfBlocks.size();
 
+  extractHeaderFields(blockData.listOfBlocks, blockData.mapBlockSize, blockData.mapBlockNamesToFields, fieldTypeNames);
   openInputFiles(fileName, numFiles);
 
   //int outFileBin[6]; 
@@ -264,18 +264,19 @@ int GadgetSource::readData()
 
   processBlocksParallel(totBlocks);
 
-
   for(int nFile = 0; nFile < numFiles; nFile++)close(fileData.inFile[nFile]);
   for(type = 0; type < 6; type++)close(fileData.outFileBin[type]);
    
   //WRITE HEADER FILES
   if (processingConfig.proc_id == 0) {
-    std::vector<std::vector<std::string>> namesFields;
-    extractHeaderFields(blockData.listOfBlocks, blockData.mapBlockSize, blockData.mapBlockNamesToFields, namesFields);
-    writeHeaderFiles(pathFileOut, namesFields, tagTypeForNameFile);
+    writeHeaderFiles(pathFileOut, fieldTypeNames, tagTypeForNameFile);
   }  
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
+  if (!memTables.empty()) {
+    VSTable* table = memTables[0];
+  }
+    
   return 0;
 }
 
@@ -283,31 +284,35 @@ void GadgetSource::processBlocksParallel(int totBlocks) {
     #pragma omp parallel for collapse(2)
     for (int nBlock = 0; nBlock < totBlocks; nBlock++) {
         for (int nFile = processingConfig.proc_id; nFile < numFiles; nFile += processingConfig.num_proc) {
-          
             long long unsigned int offset = findBlockOffset(fileData.inFile[nFile], blockData.listOfBlocks[nBlock], needSwap);
-            long long unsigned int pToStart = 0;
-            unsigned long long chunk = 0, n = 0, Resto = 0;
             unsigned long long minPart[6];
-            computeChunkSize(nFile, chunk, n, Resto, minPart);
 
+            computeMinPart(nFile, minPart);
 
             for (int type = 0; type < 6; type++) {
-              processParticle(type, nBlock, nFile, minPart, offset);
+              unsigned long long int startingPoint = 0;
+              if(m_pHeaderType2[nFile].npart[type] == 0) continue;
+              for(int i = 0; i<type; i++) 
+              {
+                startingPoint+=m_pHeaderType2[nFile].npart[i];
+              }
+              processParticle(type, nBlock, nFile, minPart, offset+(startingPoint*sizeof(float)*blockData.mapBlockSize.at(blockData.listOfBlocks[nBlock])/*blockData.mapBlockSize.at(blockData.listOfBlocks[nBlock]*/));
             }
         }
     }
+
 }
 
 void GadgetSource::processParticle(int type, int nBlock, int nFile, 
                      unsigned long long* minPart, long long unsigned int offset) {
-
     // Skip invalid particle types
     if (!isValidParticleType(type, nFile, nBlock, blockData.listOfBlocks, blockData.mapBlockNamesToFields))return;
 
     unsigned long long chunk = minPart[type];
-    unsigned long long n = m_pHeaderType2[nFile].npart[type] / chunk;
+    unsigned long long n = m_pHeaderType2[nFile].npart[type]/ chunk;
     unsigned long long Resto = m_pHeaderType2[nFile].npart[type] - (chunk * n);
-    unsigned long long pToStart = blockData.typePosition[nBlock][type] * npartTotal64[type] + blockData.fileStartPosition[type][nFile];
+    //unsigned long long pToStart = blockData.typePosition[nBlock][type] * npartTotal64[type] + blockData.fileStartPosition[type][nFile];
+    unsigned long long newOffSet = offset;
 
     int blockSize = blockData.mapBlockSize.at(blockData.listOfBlocks[nBlock]);
     float* bufferBlock = new float[blockSize * chunk];
@@ -315,16 +320,25 @@ void GadgetSource::processParticle(int type, int nBlock, int nFile,
     std::vector<float*> buffers;
     allocateBuffers(blockSize, chunk, buffers);
 
-    // Process chunks
-    for (int k = 0; k < n; k++) {
-      processChunk(fileData.inFile[nFile], bufferBlock, buffers, blockSize, chunk, offset);
-      writeChunkData(fileData.outFileBin[type], buffers, chunk, pToStart, k, blockSize, type);
-    }
+    std::string blockName;
 
+    // Process chunks
+    if(useMemory) blockName = blockData.listOfBlocks[nBlock];
+    for (int k = 0; k < n; k++) {
+      processChunk(fileData.inFile[nFile], bufferBlock, buffers, blockSize, chunk, newOffSet);
+
+      newOffSet += blockSize * chunk *sizeof(float);      
+      if(useMemory) writeChunkData(fileData.outFileBin[type], buffers, chunk, chunk, nBlock, nFile, k, blockSize, type, blockName);
+      else writeChunkData(fileData.outFileBin[type], buffers, chunk, chunk, nBlock, nFile, k, blockSize, type, blockName);
+
+    }
     // Handle Resto
     if (Resto > 0) {
       processChunk(fileData.inFile[nFile], bufferBlock, buffers, blockSize, Resto, offset);
-      writeChunkData(fileData.outFileBin[type], buffers, Resto, pToStart, n, blockSize, type);
+      
+      if(useMemory)writeChunkData(fileData.outFileBin[type], buffers, chunk, Resto, nBlock, nFile, n, blockSize, type, blockName);
+      else writeChunkData(fileData.outFileBin[type], buffers, chunk, Resto, nBlock, nFile, n, blockSize, type, blockName);
+
     }
 
     delete[] bufferBlock;
@@ -341,30 +355,62 @@ void GadgetSource::allocateBuffers(int blockSize, unsigned long long chunk, std:
 }
 
 void GadgetSource::processChunk(int fileDescriptor, float* bufferBlock, std::vector<float*>& buffers, 
-                  int blockSize, unsigned long long chunk, long long unsigned int& offset) {
+                  int blockSize, unsigned long long chunk, long long unsigned int offset) {
     // Read raw data
     pread(fileDescriptor, (char*)(bufferBlock), blockSize * chunk * sizeof(float), offset);
-    offset += blockSize * chunk * sizeof(float);
-
+    
     // Process the data
     for (unsigned long long i = 0; i < chunk; i++) {
-        for (int dim = 0; dim < blockSize; ++dim) {
+        for (int dim = 0; dim < blockSize; dim++) {
             buffers[dim][i] = needSwap ? floatSwap((char*)(&bufferBlock[blockSize * i + dim]))
                                        : bufferBlock[blockSize * i + dim];
         }
     }
+    
 }
 
 void GadgetSource::writeChunkData(int outputFile, const std::vector<float*>& buffers, 
-                    unsigned long long chunk, unsigned long long pToStart, 
+                    unsigned long long chunk, unsigned long long writeSize, 
+                    int nBlock, int nFile,
                     unsigned long long chunkIndex, 
-                    int blockSize, int type) {
+                    int blockSize, int type, std::string blockName) {
+  if (useMemory) {
+        for (int dim = 0; dim < blockSize; ++dim) {
+              unsigned int colId;
+              if (blockSize == 1) {
+
+                  colId = memTables[type]->getColId(blockName);
+              } else if (blockSize == 3) {
+                  if (dim == 0) colId = memTables[type]->getColId(blockName + "_X");
+                  else if (dim == 1) colId = memTables[type]->getColId(blockName + "_Y");
+                  else colId = memTables[type]->getColId(blockName + "_Z");
+              } else {
+                  colId = memTables[type]->getColId(blockName + "_" + std::to_string(dim));
+              }
+
+              if (colId == (unsigned int)-1) {
+                  std::cerr << "Invalid column name for block " << blockName << ", dim " << dim << std::endl;
+                  continue;
+              }
+              unsigned int colList[1] = {colId};
+
+              float* dataPtrs[1] = {buffers[dim]};
+              unsigned long long int globalRowStart = blockData.fileStartPosition[type][nFile] + chunk * chunkIndex;
+              unsigned long long int  globalRowEnd = globalRowStart + writeSize - 1;
+              memTables[type]->putColumn(colList, 1, globalRowStart, globalRowEnd, dataPtrs);
+        }
+      }
+  else{
     for (int dim = 0; dim < blockSize; ++dim) {
+        unsigned long long pToStart = blockData.typePosition[nBlock][type] * npartTotal64[type] + blockData.fileStartPosition[type][nFile];
         unsigned long long pWrite = (pToStart * sizeof(float)) + 
                                     (chunkIndex * chunk * sizeof(float)) + 
-                                    (dim * npartTotal64[type] * sizeof(float));
-        pwrite(outputFile, (char*)(buffers[dim]), chunk * sizeof(float), pWrite);
+                                    (npartTotal64[type] * dim * sizeof(float));
+
+        
+        ssize_t written = pwrite(outputFile, (char*)(buffers[dim]), writeSize * sizeof(float), pWrite);
     }
+  }
 }
 
 bool GadgetSource::isValidParticleType(int type, int nFile, int nBlock,
@@ -383,9 +429,7 @@ bool GadgetSource::isValidParticleType(int type, int nFile, int nBlock,
     return true;
 }
 
-void GadgetSource::computeChunkSize(int fileIndex, unsigned long long& chunk, 
-                                    unsigned long long& n, unsigned long long& Resto, 
-                                    unsigned long long minPart[6]) {
+void GadgetSource::computeMinPart(int fileIndex, unsigned long long minPart[6]) {
     unsigned int param = 1, esp = 32;
     unsigned long long maxULI = ldexp((float)param, esp);
     std::fill_n(minPart, 6, maxULI);
@@ -395,10 +439,6 @@ void GadgetSource::computeChunkSize(int fileIndex, unsigned long long& chunk,
         else
             minPart[type] = 2500000;
     }
-
-    chunk = minPart[0];  // Assuming chunk is related to the first type; adapt as needed
-    n = m_pHeaderType2[fileIndex].npart[0] / chunk;
-    Resto = m_pHeaderType2[fileIndex].npart[0] - (chunk * n);
 }
 
 
@@ -429,7 +469,7 @@ std::string GadgetSource::processFileName(std::string s) {
     std::filesystem::path p(s);
     std::string fileName = s;
 
-    if (numFiles > 1 && p.has_extension()) {
+    if (p.has_extension()) {
         std::string ext = p.extension().string();
         
         if (!ext.empty() && ext[0] == '.' && isNumeric(ext.substr(1))) {  
@@ -526,6 +566,7 @@ void GadgetSource::computeTypePositions() {
             blockData.typePosition[i][j] += blockData.typePosition[i - 1][j];
         }
     }
+    
 }
 
 void GadgetSource::computeFileStartPositions(int numFiles, const std::vector<headerType2>& m_pHeaderType2) {
@@ -542,7 +583,7 @@ void GadgetSource::computeFileStartPositions(int numFiles, const std::vector<hea
 
 void GadgetSource::setNumFiles(int n) {
     if (n < 1) {
-        std::cerr << "Error: numFiles must be at least 1." << std::endl;
+        //std::cerr << "Error: numFiles must be at least 1." << std::endl;
         return;
     }
     this->numFiles = n;
@@ -565,12 +606,12 @@ std::vector<std::string> GadgetSource::extractBlockList(const std::string& fileN
         fStream.read(tagTmp, 4);
         tagTmp[4] = '\0'; 
         tag = strtok(tagTmp, " ");
-
         if (std::find(blockNamesToCompare.begin(), blockNamesToCompare.end(), tag) != blockNamesToCompare.end() &&
             iCompare(tag, "Zs") != 0) {
             if (m_fields.empty() || std::find(m_fields.begin(), m_fields.end(), tag) != m_fields.end()) {
                 listOfBlocks.push_back(tag);
             }
+
         }
 
         fStream.read(reinterpret_cast<char*>(m_sizeBlock), sizeof(int));
@@ -591,30 +632,38 @@ void GadgetSource::openOutputFiles(const std::string& pathFileOut,
                                    const std::string& bin) {
     for (int type = 0; type < 6; type++) {
         fileData.outFileBin[type] = -1; 
-
-        if (npartTotal64[type] != 0) {	
-            std::string nameFileBinOut = pathFileOut + tagTypeForNameFile[type] + bin;
-            fileData.outFileBin[type] = creat(nameFileBinOut.c_str(), S_IRWXU);
-
-            // Check for errors in file creation
-            if (fileData.outFileBin[type] == -1) {
-                std::cerr << "Error: Failed to create output file " << nameFileBinOut << std::endl;
-                std::exit(EXIT_FAILURE);
-            }
+        if(useMemory){
+          VSTable* table = new VSTableMem();
+          std::string nameFileBinOut = pathFileOut + tagTypeForNameFile[type] + bin;
+          table->setLocator(nameFileBinOut);
+          table->setType("float");
+          table->setNumberOfRows(npartTotal64[type]);
+          for(int i = 0; i < fieldTypeNames[type].size(); i++) table->addCol(fieldTypeNames[type][i]);
+          memTables.push_back(table);
+        }
+        else{
+          if (npartTotal64[type] != 0) {	
+              std::string nameFileBinOut = pathFileOut + tagTypeForNameFile[type] + bin;
+              fileData.outFileBin[type] = open(nameFileBinOut.c_str(), O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
+              // Check for errors in file creation
+              if (fileData.outFileBin[type] == -1) {
+                  std::cerr << "Error: Failed to create output file " << nameFileBinOut << std::endl;
+                  std::exit(EXIT_FAILURE);
+              }
+          }
         }
     }
 }
 
 void GadgetSource::openInputFiles(const std::string& fileName, int numFiles) {
     std::filesystem::path p(fileName);
-
     std::string baseFileName = fileName;
     if (numFiles > 1 && p.has_extension() && isNumeric(p.extension().string().substr(1))) {
         baseFileName = fileName.substr(0, fileName.rfind('.')); // Remove numerical extension
     }
 
     for (int i = 0; i < numFiles; i++) {
-        std::string fullPath = (numFiles > 1) ? baseFileName + std::to_string(i) : baseFileName;
+        std::string fullPath = baseFileName + std::to_string(i);
         fileData.inFile.push_back(open(fullPath.c_str(), O_RDONLY));
         if (fileData.inFile[i] == -1) {
             std::cerr << "Error opening input file: " << fullPath << std::endl;

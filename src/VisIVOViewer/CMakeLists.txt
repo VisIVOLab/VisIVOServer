@@ -163,25 +163,28 @@ set(UTILS_SOURCE
     ${UTILS_SOURCE_DIR}/vsobject.h
     ${UTILS_SOURCE_DIR}/vstable.cpp
     ${UTILS_SOURCE_DIR}/vstable.h
+    ${UTILS_SOURCE_DIR}/vstablemem.cpp
+    ${UTILS_SOURCE_DIR}/vstablemem.h
 )
 
-add_executable(VisIVOViewer ${VIEWER_SOURCE} ${FILTERS_SOURCE} ${UTILS_SOURCE})
+add_library(VisIVOViewerLib STATIC ${VIEWER_SOURCE} ${FILTERS_SOURCE} ${UTILS_SOURCE})
 
-install(TARGETS VisIVOViewer DESTINATION bin)
-
-target_compile_definitions(VisIVOViewer PRIVATE LIGHT)
-
-target_include_directories(VisIVOViewer PRIVATE
+target_include_directories(VisIVOViewerLib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Viewer
     ${FILTERS_SOURCE_DIR}/Filters
     ${UTILS_SOURCE_DIR}
     ${VSUTILS_SOURCE_DIR}
 )
 
-target_link_libraries(VisIVOViewer PRIVATE
+target_compile_definitions(VisIVOViewerLib PRIVATE LIGHT)
+
+target_link_libraries(VisIVOViewerLib PUBLIC
     ${VTK_LIBRARIES}
     CURL::libcurl
 )
+
+add_executable(VisIVOViewer Viewer/mainViewer.cpp)
+target_link_libraries(VisIVOViewer PRIVATE VisIVOViewerLib)
 
 vtk_module_autoinit(
     TARGETS VisIVOViewer

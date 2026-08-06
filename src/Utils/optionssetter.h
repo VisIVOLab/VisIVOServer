@@ -25,6 +25,8 @@
 #include <vector>
 #include <map>
 #include "visivodef.h"
+#include "vstable.h"
+#include "vstablemem.h"
 
 struct SplotchCamera
 {
@@ -111,6 +113,10 @@ struct VisIVOServerOptions
   std::string imageSize;//! assume values: small, medium (default), large
   std::string isoSmooth;//! assume values: none (default), low, medium, high
   std::string slice;//! if is yes can visualize a slice
+  std::string autoRange;//! if is yes volume renderer uses autorange filter
+  float autoRangeMin; //!force autorange minimum value
+  float autoRangeMax; //!force autorange maximum value
+  bool setAutoRangeMin, setAutoRangeMax;
   std::string isosurface;//! if is yes can visualize a isosurface 
   std::string radiusscalar,heightscalar;//! name of field the isd used for scale the glyphs by radius and/or heigth
   std::string glyphs;//! glyphs selected
@@ -151,6 +157,7 @@ struct VisIVOServerOptions
    float vtkScale; //! Scale (amplification) factor
    float vtkEcc; //! Exccentricity
    bool internalData;
+   bool useMemory;
 
 // vtk image creation
   std::string mode;
@@ -193,7 +200,9 @@ class OptionsSetter
     int readData();
     bool internalData();
     VisIVOServerOptions returnOptions(){return m_vServer;};
-  
+    void setUseMemory(bool use){useInMemory=use;}
+    bool getUseMemory(){return useInMemory;}
+    void setTable(VSTable* t){table=t;}
   protected:
   
     VisIVOServerOptions m_vServer;
@@ -225,6 +234,8 @@ class OptionsSetter
     std::vector<std::string> m_cyclePlanePointNormal;
     bool m_inputLfnGiven;
     bool fileIsAtTheEnd;
+    bool useInMemory = false;
+    VSTable *table;
     
     std::map<std::string,std::string> viewParameter;
     std::vector <std::string> outFilename;

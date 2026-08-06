@@ -842,7 +842,7 @@ if(code==VI_SET_FFORMAT)
 	  && sValue!="fly" && sValue!="fitstable"  && sValue!="gadget"
 	  && sValue!="hdf5" && sValue!="rawpoints" && sValue!="rawgrids"
 	  && sValue!="xml" && sValue!="votable" && sValue!="muportal"
-	  && sValue !="ramses")
+	  && sValue !="ramses" && sValue !="changa" && sValue !="hecuba")
   {
     std::cerr<<"Invalid value VI_SET_FFORMAT "<<sValue<<std::endl;
     env->setatt[code]=0;
@@ -904,6 +904,8 @@ if(code==VI_SET_LFNOUT)
 	strcpy(env->lfnout,sValue.c_str());
 if(code==VI_SET_SE)
 	strcpy(env->se,sValue.c_str());
+if(code==VI_SET_ALIAS)
+	strcpy(env->aliasparticle,sValue.c_str());
 
 return noError;
 

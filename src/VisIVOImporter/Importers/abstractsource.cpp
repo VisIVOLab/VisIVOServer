@@ -163,3 +163,9 @@ int AbstractSource::writeHistory (const char* histFile,const char* format,const 
 }
 
 
+std::vector<VSTable*>& AbstractSource::getMemTables() {
+    if (memTables.empty()) {
+      std::cerr << "No available memTable" << std::endl;
+    }
+    return memTables;
+}

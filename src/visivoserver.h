@@ -67,7 +67,7 @@ struct VisIVOImporter
 {
   int setatt[1000];  // MUST BE EQUAL TO NPAR in visivodef.h QUI MASSIMO NUMERO PAR
   char fformat[64];
-  char infile[256], outfile[256], userpwd[256], binaryheader[256];
+  char infile[256], outfile[256], userpwd[256], binaryheader[256], aliasparticle[256];
   char datasetList[512], hyperslab[512], VO[512], lfnout[512], se[512];
   int comp[3];
   float size[3], missing, text;

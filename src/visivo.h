@@ -20,6 +20,7 @@ int VV_SetAtt(VisIVOViewer *env, int code, char *value);
 int VV_SetCameraPath(VisIVOViewer *env,int type,float *camera,int zoomend,float *zsf,int framesec, 
 		     int length, float *campos, float *camfp, float *camroll, int fcycle);
 int VV_View(VisIVOViewer *env);
+int VV_SetTableFromImporter(VisIVOViewer* viewer, VisIVOImporter* importer, size_t tableIndex);
 
 int VI_Init(VisIVOImporter *env);
 int VI_Clean(VisIVOImporter *env);

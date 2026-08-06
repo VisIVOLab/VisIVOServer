@@ -92,7 +92,7 @@ CommandLine::CommandLine ( )
 CommandLine::~CommandLine ( )
 //---------------------------------------------------------------------
 {
- 
+	delete pSource;
 
 }
 //---------------------------------------------------------------------
@@ -435,6 +435,9 @@ int CommandLine::parseOption (const std::vector<std::string>  arguments )
             m_historyFile=arguments[++i];
             
 		}
+		else if(arguments[i]=="--inmemory"){
+			m_inMemory = true;
+		}
  
 	}
 	m_currentPath=arguments[(arguments.size()-1)]; //!filename including path!!
@@ -624,7 +627,6 @@ int CommandLine::loadFile ()
 	}
 	else
 	{ 
-		AbstractSource* pSource;
   
 		if ( m_type=="ascii")
 			pSource = new AsciiSource();
@@ -659,12 +661,14 @@ int CommandLine::loadFile ()
   
 		else if(m_type=="gadget")
 			pSource = new GadgetSource();
+
 /*
 		else if(m_type=="hecuba")
 			pSource = new ChangaSource();
 */
-		else if(m_type=="hecuba")
+		else if(m_type=="hecuba"){
 			pSource = new HecubaSource();
+		}
 
 		else if(m_type=="changa")
 			pSource = new ChangaSource();
@@ -699,20 +703,20 @@ int CommandLine::loadFile ()
 			std::cerr<<"the format given '"<<m_type<<"' is incorrect, please try again  or --help for help"<<std::endl;
 			return -1;
 		}
+		pSource->setUseMem(m_inMemory);
 		pSource->setPointsFileName(m_currentPath.c_str(),m_binaryPath.c_str(),m_file.c_str(),
 					   m_size,m_comput,m_file.c_str(),m_endian.c_str(),
 					   m_dataType.c_str(),m_aliasParticle.c_str(), m_aliasHeader.c_str(),m_npoints,m_login.c_str(),
 					   m_binaryHeader.c_str(),m_missing,m_text,m_datasetList,
 					   m_hyperslab,m_fitshdunum, m_fields);
-		if(pSource->readHeader()==0)
+		if(pSource->readHeader()==0){
 			pSource->readData();
+		}
         if(m_historyEnabled)
         {
             pSource->writeHistory(m_historyFile.c_str(),m_type.c_str(), m_out.c_str(), m_file.c_str(), m_comput, m_size, m_login.c_str(), m_binaryHeader.c_str(), m_missing, m_text, m_endian.c_str(), m_dataType.c_str(), m_npoints, m_VO.c_str(), m_se.c_str(), m_outlfn.c_str(),m_currentPath.c_str());
         }
         
-        
-		delete pSource;
 		if(m_gLiteOut)
 		{
 		  bool isvbt=true;
@@ -765,3 +769,9 @@ void CommandLine::showHelp ()
 
   
 }
+
+std::vector<VSTable*>& CommandLine::getTable() {//return pSource->getMemTables();
+
+    std::vector<VSTable*>& tables = pSource->getMemTables();
+    return tables;
+} ; 

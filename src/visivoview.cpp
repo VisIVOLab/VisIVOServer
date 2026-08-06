@@ -125,12 +125,48 @@ void *VV_View_Process(void *id)
 	#endif
 	return 0;	
 }
+
+//----------------------------
+int VV_SetTable(VisIVOViewer *env, VSTable *table)
+//----------------------------
+{
+    if (env == nullptr || table == nullptr)
+        return invalidParCode;
+
+    env->table = table;
+    env->enableInMemory = true;
+
+    return noError;
+}
+
+int VV_SetTableFromImporter(VisIVOViewer* viewer, VisIVOImporter* importer, size_t index) {
+    if (!viewer || !importer) return -1;
+    if (index >= importer->memTables.size() || index < 0) {
+		std::cerr << "Desired table index " << index << " not available" << std::endl;
+		return -1;
+	}
+
+    VSTable* importerTable = importer->memTables[index];
+    if (!importerTable) {
+		std::cerr << "Table not defined" << std::endl;
+		return -1;
+	}
+
+	std::clog << "VSTable rows: " << importerTable->getNumberOfRows() << std::endl;
+	std::clog << "VSTable cols: " << importerTable->getNumberOfColumns() << std::endl;
+
+    viewer->table = importerTable;
+    viewer->enableInMemory = true;
+	return 0;
+}
 	
 
 //----------------------------
 int VV_View(VisIVOViewer *env)
 //---------------------------
 {
+
+  std::clog << "PROVA" << std::endl;
 #ifndef WIN32
  pthread_mutex_lock(&mutex);
 #endif
@@ -658,6 +694,12 @@ for(int idPar=0; idPar<NPAR; idPar++)
 	args.push_back("--cliplarge");
 	break;
       }
+	
+	case VV_SET_USEMEMORY:
+      {
+	args.push_back("--usememory");
+	break;
+      }
 
        default:
      {
@@ -681,7 +723,7 @@ for(int idPar=0; idPar<NPAR; idPar++)
   
   pOptSett->parseOption(args);
   VisIVOServerOptions opt=pOptSett->returnOptions();
-  
+  if(env->enableInMemory) pOptSett->setTable(env->table);
   if(!pOptSett->internalData()) pOptSett->readData(); 
   if(pOptSett->images()<0)
   { 
