@@ -46,7 +46,7 @@ int HecubaSource::readData()
         Key pk = it->first;
         Value v = it->second;
 
-        StorageNumpy &testNumpy = Value::get<0>(v);
+        Hecuba::StorageNumpy &testNumpy = Value::get<0>(v);
 
         if (testNumpy.data == nullptr) {
             std::cerr << "[ERROR] received StorageNumpy has null data" << std::endl;
@@ -60,9 +60,8 @@ int HecubaSource::readData()
         }
 
         writeGasParticles(testNumpy);
-
-        // writeDarkParticles(testNumpy);
-        // writeStarParticles(testNumpy);
+        writeDarkParticles(testNumpy);
+        writeStarParticles(testNumpy);
 
         ++nit;
 
@@ -80,7 +79,7 @@ int HecubaSource::readData()
 }
 
 
-void HecubaSource::writeGasParticles(const StorageNumpy &s)
+void HecubaSource::writeGasParticles(const Hecuba::StorageNumpy &s)
 {
     std::vector<std::string> types;
     types.insert(types.end(), {
@@ -113,17 +112,18 @@ void HecubaSource::writeGasParticles(const StorageNumpy &s)
     std::ofstream outfile;
     std::string pathFileOut;
     VSTable *table = nullptr;
-
     if (useMemory) {
         table = new VSTableMem();
         table->setType("float");
         table->setNumberOfRows(gasCount);
         for (int i = 0; i < numCols; i++) table->addCol(types[i]);
 
-        for (int t = 0; t < numCols; t++) {
-            unsigned int colList[1] = {(unsigned int)t};
-            float* dataPtrs[1] = { buffers[t].data() };
-            table->putColumn(colList, 1, 0, gasCount - 1, dataPtrs);
+        if(gasCount){
+            for (int t = 0; t < numCols; t++) {
+                unsigned int colList[1] = {(unsigned int)t};
+                float* dataPtrs[1] = { buffers[t].data() };
+                table->putColumn(colList, 1, 0, gasCount - 1, dataPtrs);
+            }
         }
     } else {
         std::string fileName = m_pointsBinaryName;
@@ -144,77 +144,139 @@ void HecubaSource::writeGasParticles(const StorageNumpy &s)
     }
 }
 
+void HecubaSource::writeDarkParticles(const Hecuba::StorageNumpy &s)
+{
+    static const int kTypeCol   = 12;
+    static const int kDarkType  = 1;  
 
-void HecubaSource::writeDarkParticles(const StorageNumpy &s){
-	std::string fileName = m_pointsBinaryName;
-  	int idx = fileName.rfind('.');
-	std::string pathFileIn = fileName.erase(idx, idx+4);
-	std::string pathFileOut = pathFileIn;
-	std::ofstream outfile((pathFileOut + "DARK" + ".bin").c_str(),std::ofstream::binary );
-	std::vector<std::string> types;
-  	types.push_back("MASS");
-  	types.push_back("POS_X");
-  	types.push_back("POS_Y");
-  	types.push_back("POS_Z");
-  	types.push_back("VEL_X");
-  	types.push_back("VEL_Y");
-  	types.push_back("VEL_Z");
-  	types.push_back("EPS");
-  	types.push_back("PHI");
-	float *buffer=NULL;
+    std::vector<std::string> types;
+    types.insert(types.end(), {
+        "MASS", "POS_X", "POS_Y", "POS_Z",
+        "VEL_X", "VEL_Y", "VEL_Z",
+        "EPS", "PHI"
+    });
+    static const int colIndex[] = {0, 1, 2, 3, 4, 5, 6, 9, 11};
+
     double* p = (double*)s.data;
-    const int meta1 = s.metas[0];
-    int meta2 = s.metas[1];
-	buffer = new float[meta1];
-	
-	for(int t = 0; t < meta2; t++) {
-		for(int i = 0; i < meta1; i++) {
-			buffer[i] = static_cast<float>(p[i*meta2 + t]);
-		}
-		outfile.write((char *)(buffer), sizeof(float)*meta1);
-	}
-	outfile.close();
+    const int meta1 = s.metas[0];   // total particles (gas+dark+star combined)
+    const int meta2 = s.metas[1];
+    const int numCols = (int)types.size();
 
-	std::string pathHeader = pathFileOut+"DARK"+ ".bin";
-	makeHeader(meta1, pathHeader, types, m_cellSize,m_cellComp,m_volumeOrTable);
-	return;	
+    std::vector<std::vector<float>> buffers(numCols);
+    for (auto &b : buffers) b.reserve(meta1);
+
+    int darkCount = 0;
+    for (int i = 0; i < meta1; i++) {
+        const double* row = p + (size_t)i * meta2;
+        if (row[kTypeCol] != (double)kDarkType) continue;
+
+        for (int t = 0; t < numCols; t++) {
+            buffers[t].push_back(static_cast<float>(row[colIndex[t]]));
+        }
+        darkCount++;
+    }
+
+    std::ofstream outfile;
+    std::string pathFileOut;
+    VSTable *table = nullptr;
+    if (useMemory) {
+        table = new VSTableMem();
+        table->setType("float");
+        table->setNumberOfRows(darkCount);
+        for (int i = 0; i < numCols; i++) table->addCol(types[i]);
+
+        if (darkCount) {
+            for (int t = 0; t < numCols; t++) {
+                unsigned int colList[1] = {(unsigned int)t};
+                float* dataPtrs[1] = { buffers[t].data() };
+                table->putColumn(colList, 1, 0, darkCount - 1, dataPtrs);
+            }
+        }
+    } else {
+        std::string fileName = m_pointsBinaryName;
+        int idx = fileName.rfind('.');
+        std::string pathFileIn = fileName.erase(idx, idx + 4);
+        pathFileOut = pathFileIn;
+        outfile.open((pathFileOut + "DARK" + ".bin").c_str(), std::ofstream::binary);
+        for (int t = 0; t < numCols; t++) {
+            outfile.write((char*)buffers[t].data(), sizeof(float) * darkCount);
+        }
+        outfile.close();
+        std::string pathHeader = pathFileOut + "DARK" + ".bin";
+        makeHeader(darkCount, pathHeader, types, m_cellSize, m_cellComp, m_volumeOrTable);
+    }
+
+    if (useMemory) {
+        memTables.push_back(table);
+    }
 }
 
-void HecubaSource::writeStarParticles(const StorageNumpy &s){
 
-	std::string fileName = m_pointsBinaryName;
-  	int idx = fileName.rfind('.');
-	std::string pathFileIn = fileName.erase(idx, idx+4);
-	std::string pathFileOut = pathFileIn;
-	std::ofstream outfile((pathFileOut + "STAR" + ".bin").c_str(),std::ofstream::binary );
-	std::vector<std::string> types; //!species block nameset 
-  	types.push_back("MASS");
-  	types.push_back("POS_X");
-  	types.push_back("POS_Y");
-  	types.push_back("POS_Z");
-  	types.push_back("VEL_X");
-  	types.push_back("VEL_Y");
-  	types.push_back("VEL_Z");
-  	types.push_back("METALS");
-  	types.push_back("TFORM");
-  	types.push_back("EPS");
-  	types.push_back("PHI");
-	float *buffer=NULL;
+void HecubaSource::writeStarParticles(const Hecuba::StorageNumpy &s)
+{
+    static const int kTypeCol  = 12;
+    static const int kStarType = 2;
+
+    std::vector<std::string> types;
+    types.insert(types.end(), {
+        "MASS", "POS_X", "POS_Y", "POS_Z",
+        "VEL_X", "VEL_Y", "VEL_Z",
+        "METALS", "TFORM", "EPS", "PHI"
+    });
+    static const int colIndex[] = {0, 1, 2, 3, 4, 5, 6, 10, 13, 9, 11};
+
     double* p = (double*)s.data;
     const int meta1 = s.metas[0];
-    int meta2 = s.metas[1];
-	buffer = new float[meta1];
-	for(int t = 0; t < meta2; t++) {
-		for(int i = 0; i < meta1; i++) {
-			buffer[i] = static_cast<float>(p[i*meta2 + t]);
-		}
-		outfile.write((char *)(buffer), sizeof(float)*meta1);
-	}
-	outfile.close();
+    const int meta2 = s.metas[1];
+    const int numCols = (int)types.size();
 
-	std::string pathHeader = pathFileOut+"STAR"+ ".bin";
-	makeHeader(meta1, pathHeader, types, m_cellSize,m_cellComp,m_volumeOrTable);
-	return;
+    std::vector<std::vector<float>> buffers(numCols);
+    for (auto &b : buffers) b.reserve(meta1);
+
+    int starCount = 0;
+    for (int i = 0; i < meta1; i++) {
+        const double* row = p + (size_t)i * meta2;
+        if (row[kTypeCol] != (double)kStarType) continue;
+
+        for (int t = 0; t < numCols; t++) {
+            buffers[t].push_back(static_cast<float>(row[colIndex[t]]));
+        }
+        starCount++;
+    }
+
+    std::ofstream outfile;
+    std::string pathFileOut;
+    VSTable *table = nullptr;
+    if (useMemory) {
+        table = new VSTableMem();
+        table->setType("float");
+        table->setNumberOfRows(starCount);
+        for (int i = 0; i < numCols; i++) table->addCol(types[i]);
+
+        if (starCount) {
+            for (int t = 0; t < numCols; t++) {
+                unsigned int colList[1] = {(unsigned int)t};
+                float* dataPtrs[1] = { buffers[t].data() };
+                table->putColumn(colList, 1, 0, starCount - 1, dataPtrs);
+            }
+        }
+    } else {
+        std::string fileName = m_pointsBinaryName;
+        int idx = fileName.rfind('.');
+        std::string pathFileIn = fileName.erase(idx, idx + 4);
+        pathFileOut = pathFileIn;
+        outfile.open((pathFileOut + "STAR" + ".bin").c_str(), std::ofstream::binary);
+        for (int t = 0; t < numCols; t++) {
+            outfile.write((char*)buffers[t].data(), sizeof(float) * starCount);
+        }
+        outfile.close();
+        std::string pathHeader = pathFileOut + "STAR" + ".bin";
+        makeHeader(starCount, pathHeader, types, m_cellSize, m_cellComp, m_volumeOrTable);
+    }
+
+    if (useMemory) {
+        memTables.push_back(table);
+    }
 }
 
 //---------------------------------------------------------------------

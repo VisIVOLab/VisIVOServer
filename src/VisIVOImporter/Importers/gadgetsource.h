@@ -29,7 +29,6 @@
 #include <unordered_map>
 #include <vstable.h>
 #include <vstablemem.h>
-#include <gtest/gtest.h>
 static const int MAX_FILES = 2000;
 
 

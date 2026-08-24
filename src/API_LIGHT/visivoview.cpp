@@ -148,8 +148,8 @@ int VV_SetTableFromImporter(VisIVOViewer* viewer, VisIVOImporter* importer, size
 	
     VSTable* importerTable = importer->memTables->at(index);
 
-    if (!importerTable) {
-		std::cerr << "Table not defined" << std::endl;
+    if (!importerTable || !importerTable->getNumberOfRows()) {
+		std::cerr << "Table at the selected index not defined" << std::endl;
 		return -1;
 	}
 

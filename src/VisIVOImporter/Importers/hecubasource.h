@@ -34,9 +34,8 @@
 #include <vstable.h>
 #include <vstablemem.h>
 #include <ValueClass.h>
-#include <gtest/gtest.h>
 
-class headerObject:public StorageObject{
+/*class headerObject:public StorageObject{
 public:
 HECUBA_ATTRS (
      double, time,
@@ -55,18 +54,18 @@ class particleObj:public StorageObject{
         StorageNumpy, darkParticle,
         StorageNumpy, starParticle
         );
-};
+};*/
 /*
 using Key = KeyClass<int32_t>;
 using Value = ValueClass<particleObj>;
 class particleDict : public StorageDict<Key,Value,particleDict>{
 } ;
 */
-using Key = KeyClass<double, float, float, float, float, float, float>;
+using Key = Hecuba::KeyClass<double, float, float, float, float, float, float>;
 
-using Value = ValueClass<StorageNumpy>;
+using Value = Hecuba::ValueClass<Hecuba::StorageNumpy>;
 
-class Dict: public StorageDict <Key,Value,Dict>, public StorageStream {
+class Dict: public Hecuba::StorageDict <Key,Value,Dict>, public Hecuba::StorageStream {
 
 };
 class HecubaSource : public AbstractSource
@@ -77,9 +76,9 @@ class HecubaSource : public AbstractSource
     int readData();
         
   private:
-    void writeGasParticles(const StorageNumpy &s);
-    void writeDarkParticles(const StorageNumpy &s);
-    void writeStarParticles(const StorageNumpy &s);
+    void writeGasParticles(const Hecuba::StorageNumpy &s);
+    void writeDarkParticles(const Hecuba::StorageNumpy &s);
+    void writeStarParticles(const Hecuba::StorageNumpy &s);
     std::vector <std::string> m_fieldsNames;   
     unsigned int      npart_total[6];
     
